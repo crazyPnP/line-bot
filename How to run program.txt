@@ -1,0 +1,34 @@
+1.Enter line-bot file
+	/d/line-bot
+2.Run Python virtual environment (Name's venv)
+	source venv/Scripts/activate
+3.Run your program
+	python app.py
+4.Start ngrok server
+	ngrok http 8000
+
+Leave Python virtual environment
+	deactivate
+
+line_bot/
+│
+├── app.py
+├── config.py
+│
+├── handlers/
+│   └── line_webhook.py
+│
+├── services/
+│   ├── proposal_service.py
+│   └── booking_service.py
+│
+├── repos/
+│   └── supabase_repo.py
+│
+├── domain/
+│   ├── rules.py
+│   └── errors.py
+│
+└── utils/
+    └── time_utils.py
+
