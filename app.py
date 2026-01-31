@@ -1,12 +1,8 @@
 from flask import Flask, request, abort
-from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
-from handlers.line_webhook import handle_event
-from config import LINE_CHANNEL_SECRET
+from handlers.line_webhook import handler 
 
 app = Flask(__name__)
-handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
 
 @app.route("/callback", methods=["POST"])
 def callback():
@@ -19,7 +15,6 @@ def callback():
         abort(400)
 
     return "OK"
-
 
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
