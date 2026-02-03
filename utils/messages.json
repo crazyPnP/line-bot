@@ -1,0 +1,130 @@
+{
+  "zh": {
+    "common": {
+      "cancel": "✅ 已取消流程。",
+      "error_occurred": "發生錯誤，請稍後再試。",
+      "invalid_input": "輸入格式錯誤，請重新輸入。",
+      "not_found_profile": "找不到你的 profile，請稍後再試。",
+      "unsupported_cmd": "指令未支援"
+    },
+    "proposal": {
+      "start": "📝 開始建立提案",
+      "no_teachers": "目前沒有可用的老師，請稍後再試。",
+      "select_teacher": "第 1 步：請選擇老師（輸入數字）\n{teachers}",
+      "cancel_flow": "✅ 已取消本次提案流程。",
+      "wizard_no_state": "你目前沒有進行中的提案流程。請輸入「提案」開始。",
+      "input_teacher_idx": "請輸入老師序號，例如：1",
+      "input_start_time": "第 2 步：請輸入開始時間（YYYY-MM-DD HH:MM）\n例如：2025-12-22 19:00",
+      "time_format_error": "開始時間格式錯誤，請用：YYYY-MM-DD HH:MM，例如：2025-12-22 19:00",
+      "too_soon": "❌ 預約需至少 1 小時前。請輸入 >= {min_time}",
+      "select_duration": "第 3 步：請選擇課程時長（輸入數字）\n1) 30 分鐘\n2) 1 小時",
+      "duration_set": "✅ 已設定課程時長\n時間：{time_range}",
+      "select_mode": "第 4 步：請輸入課程類型（輸入數字）\n1) 對話\n2) 文法\n3) 小孩學英文",
+      "mode_selected": "✅ 已選擇課程類型：{mode}",
+      "input_note": "第 5 步：請輸入備註，若無想法請輸入無，例如：想練習面試英文",
+      "success": "✅ 提案已建立！\n老師：{teacher}\n時間：{time}\n類型：{mode}\n備註：{note}\n\n你可以輸入「取消提案」查看待審核提案。",
+      "not_found": "找不到該老師，請輸入 1 ~ {count}。",
+      "pending_list_title": "📌 你的 pending 提案：",
+      "no_pending": "你目前沒有 pending 的提案。",
+      "cancel_pending_idx": "取消請輸入：取消提案 1",
+      "cancel_pending_success": "✅ 已取消提案 #{idx}\n\n老師：{teacher}\n時間：{time}",
+      "cancel_pending_fail": "取消失敗：找不到提案或提案已不是 pending。",
+      "wizard_error": "流程狀態異常，請輸入「提案」重新開始。"
+    },
+    "booking": {
+      "list_title": "📌 你的已成立課程：",
+      "no_bookings": "你目前沒有已成立的課程。",
+      "cancel_instr": "取消請輸入：取消課程 1",
+      "cancel_limit": "❌ 距離上課時間 30 分鐘內不可取消。",
+      "cancel_success": "✅ 已成功取消課程。",
+      "info_title": "📘 課程資訊（已確認）",
+      "not_found": "❌ 找不到課程（id={id}），或尚未確認。",
+      "view_format_error": "格式錯誤，請使用：查看課程 123"
+    },
+    "teacher": {
+      "pending_list_title": "📩 待審核提案：",
+      "no_pending": "目前沒有待審核提案。",
+      "accept_conflict_self": "❌ 接受失敗：該時段你已有已成立課程（時間衝突）。",
+      "accept_conflict_student": "❌ 接受失敗：學生該時段已有已成立課程（時間衝突）。",
+      "accept_success": "✅ 已接受提案 #{idx}，並建立課程（confirmed）。",
+      "reject_success": "✅ 已拒絕提案 #{idx}。",
+      "notify_accepted": "✅ 你的提案已被 {teacher} 接受！\n時間：{time}",
+      "notify_rejected": "❌ 你的提案被 {teacher} 拒絕。\n原因：{reason}"
+    },
+    "admin": {
+        "switch_student": "✅ 已切換為【學生模式】",
+        "switch_teacher": "✅ 已切換為【老師模式】\n請輸入「選老師」選擇要代入的老師。",
+        "no_teachers": "目前沒有老師可選。",
+        "select_teacher_idx": "請輸入要代入的老師序號：",
+        "teacher_impersonated": "✅ 已代入老師：{name}\n你可以輸入「待審核」查看提案。"
+    },
+    "menu": {
+        "welcome": "👋 歡迎 {name}！\n已自動將你的身分註冊為「學生」。\n\n您可以點選下方選單開始預約課程。",
+        "switch_lang": "語言已切換為中文"
+    }
+  },
+  "en": {
+    "common": {
+      "cancel": "✅ Process canceled.",
+      "error_occurred": "An error occurred, please try again later.",
+      "invalid_input": "Invalid format, please try again.",
+      "not_found_profile": "Profile not found, please try again later.",
+      "unsupported_cmd": "Command not supported"
+    },
+    "proposal": {
+      "start": "📝 Start creating a proposal",
+      "no_teachers": "No teachers available, please try again later.",
+      "select_teacher": "Step 1: Select a teacher (Enter number)\n{teachers}",
+      "cancel_flow": "✅ Current proposal process canceled.",
+      "wizard_no_state": "No ongoing proposal process. Type 'Proposal' to start.",
+      "input_teacher_idx": "Please enter teacher index, e.g., 1",
+      "input_start_time": "Step 2: Enter start time (YYYY-MM-DD HH:MM)\nE.g., 2025-12-22 19:00",
+      "time_format_error": "Time format error. Use YYYY-MM-DD HH:MM, e.g., 2025-12-22 19:00",
+      "too_soon": "❌ Must book at least 1 hour in advance. Please enter >= {min_time}",
+      "select_duration": "Step 3: Select duration (Enter number)\n1) 30 mins\n2) 1 hour",
+      "duration_set": "✅ Duration set\nTime: {time_range}",
+      "select_mode": "Step 4: Select class type (Enter number)\n1) Conversation\n2) Grammar\n3) Kids",
+      "mode_selected": "✅ Class type selected: {mode}",
+      "input_note": "Step 5: Enter a note (or type 'none')",
+      "success": "✅ Proposal created!\nTeacher: {teacher}\nTime: {time}\nType: {mode}\nNote: {note}\n\nYou can type 'Cancel Proposal' to view pending proposals.",
+      "not_found": "Teacher not found, please enter 1 ~ {count}.",
+      "pending_list_title": "📌 Your pending proposals:",
+      "no_pending": "You have no pending proposals.",
+      "cancel_pending_idx": "To cancel, enter: Cancel Proposal 1",
+      "cancel_pending_success": "✅ Proposal #{idx} canceled.\n\nTeacher: {teacher}\nTime: {time}",
+      "cancel_pending_fail": "Cancel failed: Proposal not found or no longer pending.",
+      "wizard_error": "Process error, type 'Proposal' to restart."
+    },
+    "booking": {
+      "list_title": "📌 Your confirmed bookings:",
+      "no_bookings": "You have no confirmed bookings.",
+      "cancel_instr": "To cancel, enter: Cancel Booking 1",
+      "cancel_limit": "❌ Cannot cancel within 30 minutes of class.",
+      "cancel_success": "✅ Booking canceled successfully.",
+      "info_title": "📘 Booking Info (Confirmed)",
+      "not_found": "❌ Booking not found (id={id}) or not confirmed.",
+      "view_format_error": "Format error, use: View Booking 123"
+    },
+    "teacher": {
+      "pending_list_title": "📩 Pending Proposals:",
+      "no_pending": "No pending proposals.",
+      "accept_conflict_self": "❌ Accept failed: You have a schedule conflict.",
+      "accept_conflict_student": "❌ Accept failed: Student has a schedule conflict.",
+      "accept_success": "✅ Proposal #{idx} accepted, booking confirmed.",
+      "reject_success": "✅ Proposal #{idx} rejected.",
+      "notify_accepted": "✅ Your proposal has been accepted by {teacher}!\nTime: {time}",
+      "notify_rejected": "❌ Your proposal was rejected by {teacher}.\nReason: {reason}"
+    },
+    "admin": {
+        "switch_student": "✅ Switched to [Student Mode]",
+        "switch_teacher": "✅ Switched to [Teacher Mode]\nType 'Select Teacher' to impersonate.",
+        "no_teachers": "No teachers available.",
+        "select_teacher_idx": "Enter teacher index to impersonate:",
+        "teacher_impersonated": "✅ Impersonating: {name}\nYou can type 'Pending' to view proposals."
+    },
+    "menu": {
+        "welcome": "👋 Welcome {name}!\nYou have been registered as a 'Student'.\n\nYou can use the menu below to start booking.",
+        "switch_lang": "Language switched to English"
+    }
+  }
+}

@@ -47,6 +47,21 @@ class SupabaseRepo:
         new_profile = self.get_profile_by_line_user_id(line_user_id)
         return new_profile, True
 
+    def update_profile_language(self, line_user_id: str, lang: str):
+        """更新使用者的語言偏好 (zh/en)"""
+        return self.client.table("profile") \
+            .update({"language": lang}) \
+            .eq("line_user_id", line_user_id) \
+            .execute()
+
+    def list_teachers_simple(self):
+        """Admin 模式使用：列出所有老師的簡要資訊"""
+        response = self.client.table("profile") \
+            .select("id, name") \
+            .eq("role", "teacher") \
+            .execute()
+        return response.data
+        
     # ===== time_proposals (student side) =====
     def create_time_proposal(self, proposal: dict):
         res = self.sb.from_("time_proposals").insert(proposal).execute()
