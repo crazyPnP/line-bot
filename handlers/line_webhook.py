@@ -53,6 +53,16 @@ def handle_event(event):
     text = event.message.text.strip()
     line_user_id = event.source.user_id
 
+    if re.match(r"^(查看課程|查課程|課程)\s*\d+", text):
+        booking_id = _parse_index(text)
+        if booking_id is None:
+            _reply_text(event.reply_token, "格式錯誤，請使用：查看課程 123")
+            return
+
+        reply = booking_service.get_confirmed_booking_by_id(booking_id)
+        _reply_text(event.reply_token, reply)
+        return
+
     # 取 LINE display name
     try:
         line_profile = messaging_api.get_profile(line_user_id)
@@ -215,7 +225,7 @@ def handle_event(event):
                 reply = proposal_service.teacher_reject_by_index(teacher_profile_id, idx, reason)
 
         else:
-            reply = "老師可用：待審核 / 接受1 / 拒絕1 原因"
+            reply = "老師可用：待審核"
 
     reply = welcome + reply
     _reply_text(event.reply_token, reply)

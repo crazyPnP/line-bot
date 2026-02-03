@@ -68,3 +68,27 @@ class BookingService:
         )
 
         return "✅ 已成功取消課程。"
+
+
+    def get_confirmed_booking_by_id(self, booking_id: int) -> str:
+            b = self.repo.get_confirmed_booking_by_id(booking_id)
+            if not b:
+                return f"❌ 找不到課程（id={booking_id}），或尚未確認。"
+
+            # 撈老師 / 學生名字
+            profile_ids = [pid for pid in [b.get("teacher_id"), b.get("student_id")] if pid]
+            name_map = self.repo.get_profile_names_by_ids(profile_ids)
+
+            teacher_name = name_map.get(b.get("teacher_id"), "未知老師")
+            student_name = name_map.get(b.get("student_id"), "未知學生")
+
+            start = fmt_taipei(b["start_time"])
+            end = fmt_taipei(b["end_time"])
+
+            return (
+                "📘 課程資訊（已確認）\n"
+                f"課程 ID：{b['id']}\n"
+                f"老師：{teacher_name}\n"
+                f"學生：{student_name}\n"
+                f"時間：{start} ~ {end}"
+            )

@@ -159,6 +159,17 @@ class SupabaseRepo:
         )
         return bool(res.data)
 
+    def get_confirmed_booking_by_id(self, booking_id: int):
+        res = (
+            self.client
+            .table("bookings")
+            .select("*")
+            .eq("id", booking_id)
+            .eq("status", "confirmed")
+            .maybe_single()
+            .execute()
+        )
+        return res.data
 # ===== conversation_state (wizard staging) =====
     def get_state(self, line_user_id: str, flow: str):
         res = (
