@@ -130,6 +130,54 @@ class SupabaseRepo:
         )
         return res.data or []
 
+    def create_booking_from_proposal(self, proposal_id: str, teacher_profile_id: str):
+        """
+        老師接受提案：
+        1. 查詢提案詳情
+        2. 建立 Booking (confirmed)
+        3. 更新 Proposal (accepted)
+        """
+        # 1. 取得提案資料
+        res_p = self.sb.from_("time_proposals").select("*").eq("id", proposal_id).execute()
+        if not res_p.data:
+            return None
+        
+        p = res_p.data[0]
+        
+        # 檢查是否已經被處理過
+        if p["status"] != "pending":
+            return None
+
+        # 2. 準備 Booking 資料
+        booking_data = {
+            "proposal_id": p["id"],
+            "teacher_id": teacher_profile_id,
+            "student_id": p["proposed_by"],
+            "start_time": p["start_time"],
+            "end_time": p["end_time"],
+            "class_mode": p.get("class_mode", "general"),
+            "price": 0,       # 需根據價格表邏輯補上，這裡先預設 0 或保留原始邏輯
+            "currency": "TWD",
+            "status": "confirmed",
+            "created_at": now_utc_iso(),
+            "updated_at": now_utc_iso()
+        }
+
+        # 3. 寫入 Bookings 表
+        res_b = self.sb.from_("bookings").insert(booking_data).execute()
+        if not res_b.data:
+            return None
+            
+        new_booking = res_b.data[0]
+
+        # 4. 更新 Time Proposal 狀態為 accepted
+        self.sb.from_("time_proposals").update({
+            "status": "accepted",
+            "updated_at": now_utc_iso()
+        }).eq("id", proposal_id).execute()
+
+        return new_booking["id"]
+    
     # ===== bookings =====
     def list_confirmed_bookings_for_profile(self, profile_id: str):
         res = (
