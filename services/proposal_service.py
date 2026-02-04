@@ -2,9 +2,10 @@ from utils.time_utils import now_utc_iso, fmt_taipei, parse_taipei_input_to_utc_
 from datetime import datetime, timedelta
 from repos.supabase_repo import SupabaseRepo
 from services.line_notify import LinePushService
+import re
 from linebot.v3.messaging import Configuration
 from config import LINE_CHANNEL_ACCESS_TOKEN
-from utils.i18n import get_msg
+from utils.i18n import get_msg, parse_index
 
 FLOW = "proposal_create"
 
@@ -18,6 +19,18 @@ class ProposalService:
         profile = self.repo.get_profile_by_line_user_id(line_user_id)
         return profile.get("language", "zh") if profile else "zh"
 
+    def cancel_any_flow(self, line_user_id: str) -> str:
+        """通用：清除所有進行中的對話流程狀態"""
+        lang = self._get_lang(line_user_id)
+    
+        # 清除所有可能的流程 Key
+        self.repo.clear_state(line_user_id, "proposal_create")
+        self.repo.clear_state(line_user_id, "student_action")
+        self.repo.clear_state(line_user_id, "teacher_action")
+    
+        # 返回通用取消訊息
+        return get_msg("common.cancel", lang=lang)
+    
     # ========= Student: entry =========
     def student_start_proposal(self, line_user_id: str) -> str:
         lang = self._get_lang(line_user_id)
@@ -41,11 +54,6 @@ class ProposalService:
             teacher_lines.append(f"{i}) {t['name']}")
         
         return get_msg("proposal.select_teacher", lang=lang, teachers="\n".join(teacher_lines))
-
-    def student_cancel_flow(self, line_user_id: str) -> str:
-        lang = self._get_lang(line_user_id)
-        self.repo.clear_state(line_user_id, FLOW)
-        return get_msg("proposal.cancel_flow", lang=lang)
 
     def student_wizard_input(self, line_user_id: str, user_text: str) -> str:
         lang = self._get_lang(line_user_id)
@@ -106,12 +114,13 @@ class ProposalService:
 
         # Step: class_mode
         if step == "mode":
-            modes = {"1": "對話", "2": "文法", "3": "小孩學英文"} # 建議資料庫存Key，此處簡化處理
-            mode = modes.get(user_text.strip())
-            if not mode:
+            modes = {"1": "conversation", "2": "grammar", "3": "kids_english"}
+            mode_key = modes.get(user_text.strip())
+            
+            if not mode_key:
                 return get_msg("proposal.select_mode", lang=lang)
 
-            payload["class_mode"] = mode
+            payload["class_mode"] = mode_key 
             self.repo.upsert_state(line_user_id, FLOW, "note", payload)
             return get_msg("proposal.input_note", lang=lang)
 
@@ -136,13 +145,30 @@ class ProposalService:
             self.repo.clear_state(line_user_id, FLOW)
             
             return get_msg("proposal.success", lang=lang, 
-                           teacher=payload.get("teacher_name"),
-                           time=f"{fmt_taipei(proposal['start_time'])}",
-                           mode=proposal['class_mode'],
-                           note=proposal['note'])
+            teacher=payload.get("teacher_name"),
+               time=f"{fmt_taipei(proposal['start_time'])}",
+               mode=get_msg(f"mode.{proposal['class_mode']}", lang=lang), 
+               note=proposal['note'])
 
         return get_msg("proposal.wizard_error", lang=lang)
 
+    def student_action_wizard(self, line_user_id: str, user_text: str) -> str:
+        lang = self._get_lang(line_user_id)
+        state = self.repo.get_state(line_user_id, "student_action")
+        if not state: return get_msg("common.unsupported_cmd", lang=lang)
+
+        step = state["step"]
+        if user_text.startswith("取消"):
+            idx = parse_index(user_text)
+            if step == "viewing_pending":
+                reply = self.student_cancel_pending_by_index(line_user_id, idx)
+            elif step == "viewing_confirmed":
+                reply = self.student_cancel_confirmed_by_index(line_user_id, idx)
+            
+            self.repo.clear_state(line_user_id, "student_action")
+            return reply
+        return get_msg("common.unsupported_cmd", lang=lang)
+    
     # ========= Student: list/cancel pending =========
     def student_list_pending(self, line_user_id: str) -> str:
         lang = self._get_lang(line_user_id)
@@ -173,7 +199,81 @@ class ProposalService:
             return get_msg("proposal.cancel_pending_success", lang=lang, idx=idx, teacher=t_name, time=fmt_taipei(r['start_time']))
         return get_msg("proposal.cancel_pending_fail", lang=lang)
 
-    # ========= Teacher: list/accept/reject (通知時需查學生的語言) =========
+    def student_cancel_confirmed_by_index(self, line_user_id: str, idx: int) -> str:
+        lang = self._get_lang(line_user_id)
+        profile = self.repo.get_profile_by_line_user_id(line_user_id)
+        rows = self.repo.list_confirmed_bookings_for_profile(profile["id"])
+        rows = [r for r in rows if r.get("student_id") == profile["id"]]
+
+        if not rows or idx < 1 or idx > len(rows):
+            return get_msg("proposal.not_found", lang=lang, count=len(rows or []))
+
+        b = rows[idx - 1]
+        if not self._can_cancel(b["start_time"]):
+            return get_msg("booking.cancel_limit", lang=lang)
+
+        self.repo.cancel_booking(booking_id=b["id"], cancel_by="student", reason="student_cancel")
+        return get_msg("booking.cancel_success", lang=lang)
+    
+# ========= Teacher: Wizard Flow (Like student_wizard_input) =========
+    def teacher_wizard_input(self, line_user_id: str, user_text: str) -> str:
+        lang = self._get_lang(line_user_id)
+        # 取得老師的行為狀態
+        state = self.repo.get_state(line_user_id, "teacher_action")
+        
+        if not state:
+            return "請先點選「待確認課程」再進行操作。"
+
+        step = state["step"]
+        payload = state.get("payload") or {}
+        teacher_profile_id = payload.get("teacher_profile_id")
+
+        # 只有在 viewing_pending 步驟下才處理指令
+        if step == "viewing_pending":
+            if user_text.startswith("接受"):
+                idx = parse_index(user_text)
+                if idx is None:
+                    return get_msg("teacher.format_error_accept", lang=lang)
+                # 呼叫原有的接受邏輯
+                reply = self.teacher_accept_by_index(teacher_profile_id, idx)
+                # 執行完畢後可視需求清除狀態或保留
+                return reply
+
+            elif user_text.startswith("拒絕"):
+                idx = parse_index(user_text)
+                if idx is None:
+                    return get_msg("teacher.format_error_reject", lang=lang)
+                # 擷取原因：拒絕 1 太累了 -> 太累了
+                reason = re.sub(r"^(拒絕|Reject)\s*\d+\s*", "", user_text).strip()
+                # 呼叫原有的拒絕邏輯
+                reply = self.teacher_reject_by_index(teacher_profile_id, idx, reason)
+                return reply
+
+        return get_msg("common.unsupported_cmd", lang=lang)
+    
+    def teacher_action_wizard(self, line_user_id: str, user_text: str) -> str:
+        lang = self._get_lang(line_user_id)
+        state = self.repo.get_state(line_user_id, "teacher_action")
+        if not state: return get_msg("common.unsupported_cmd", lang=lang)
+
+        step = state["step"]
+        payload = state.get("payload", {})
+        t_id = payload.get("teacher_profile_id")
+
+        if step == "viewing_pending":
+            if user_text.startswith("接受"):
+                return self.teacher_accept_by_index(t_id, parse_index(user_text))
+            elif user_text.startswith("拒絕"):
+                reason = re.sub(r"^(拒絕|Reject)\s*\d+\s*", "", user_text).strip()
+                return self.teacher_reject_by_index(t_id, parse_index(user_text), reason)
+        
+        elif step == "viewing_confirmed" and user_text.startswith("取消"):
+            from services.booking_service import BookingService
+            return BookingService().teacher_cancel_confirmed_by_index(t_id, parse_index(user_text), line_user_id)
+
+        return get_msg("common.unsupported_cmd", lang=lang)
+    
+    # ========= Teacher: list/accept/reject =========
     def teacher_list_pending(self, teacher_profile_id: str) -> str:
         # 老師介面語系由老師 profile 決定
         teacher_line_id = self.repo.get_line_user_id_by_profile_id(teacher_profile_id)
@@ -205,10 +305,27 @@ class ProposalService:
         student_line_id = self.repo.get_line_user_id_by_profile_id(p["proposed_by"])
         s_lang = self._get_lang(student_line_id)
         
+        translated_mode = get_msg(f"mode.{p.get('class_mode')}", lang=s_lang)
         teacher_profile = self.repo.get_profile_by_id(teacher_profile_id)
+        
         msg = get_msg("teacher.notify_accepted", lang=s_lang, 
                       teacher=teacher_profile.get("name", "Teacher"), 
-                      time=fmt_taipei(p['start_time']))
+                      time=fmt_taipei(p['start_time']),
+                      mode=translated_mode)
         self.push.push_text(student_line_id, msg)
 
         return get_msg("teacher.accept_success", lang=t_lang, idx=idx)
+    
+    def teacher_cancel_confirmed_by_index(self, teacher_id: str, idx: int, line_user_id: str) -> str:
+        lang = self._get_lang(line_user_id)
+        rows = self.repo.list_confirmed_bookings_for_profile(teacher_id)
+        rows = [r for r in rows if r.get("teacher_id") == teacher_id]
+
+        if not rows or idx < 1 or idx > len(rows):
+            return get_msg("proposal.not_found", lang=lang, count=len(rows or []))
+
+        b = rows[idx - 1]
+        self.repo.cancel_booking(booking_id=b["id"], cancel_by="teacher", reason="teacher_cancel")
+        
+        # 發送通知給學生 (略)
+        return get_msg("booking.cancel_success", lang=lang)

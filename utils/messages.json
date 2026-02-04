@@ -1,7 +1,7 @@
 {
   "zh": {
     "common": {
-      "cancel": "✅ 已取消流程。",
+      "cancel": "✅ 已中斷目前流程並回到初始狀態。您可以重新開始操作。",
       "error_occurred": "發生錯誤，請稍後再試。",
       "invalid_input": "輸入格式錯誤，請重新輸入。",
       "not_found_profile": "找不到你的 profile，請稍後再試。",
@@ -41,6 +41,11 @@
       "not_found": "❌ 找不到課程（id={id}），或尚未確認。",
       "view_format_error": "格式錯誤，請使用：查看課程 123"
     },
+    "mode": {
+      "conversation": "對話",
+      "grammar": "文法",
+      "kids_english": "小孩學英文"
+    },
     "teacher": {
       "pending_list_title": "📩 待審核提案：",
       "no_pending": "目前沒有待審核提案。",
@@ -65,7 +70,7 @@
   },
   "en": {
     "common": {
-      "cancel": "✅ Process canceled.",
+      "cancel": "✅ Current process has been reset. You can start over now.",
       "error_occurred": "An error occurred, please try again later.",
       "invalid_input": "Invalid format, please try again.",
       "not_found_profile": "Profile not found, please try again later.",
@@ -104,6 +109,11 @@
       "info_title": "📘 Booking Info (Confirmed)",
       "not_found": "❌ Booking not found (id={id}) or not confirmed.",
       "view_format_error": "Format error, use: View Booking 123"
+    },
+    "mode": {
+      "conversation": "Conversation",
+      "grammar": "Grammar",
+      "kids_english": "Kids English"
     },
     "teacher": {
       "pending_list_title": "📩 Pending Proposals:",

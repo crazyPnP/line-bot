@@ -49,14 +49,14 @@ class SupabaseRepo:
 
     def update_profile_language(self, line_user_id: str, lang: str):
         """更新使用者的語言偏好 (zh/en)"""
-        return self.client.table("profile") \
+        return self.sb.from_("profile") \
             .update({"language": lang}) \
             .eq("line_user_id", line_user_id) \
             .execute()
 
     def list_teachers_simple(self):
         """Admin 模式使用：列出所有老師的簡要資訊"""
-        response = self.client.table("profile") \
+        response = self.sb.from_("profile") \
             .select("id, name") \
             .eq("role", "teacher") \
             .execute()

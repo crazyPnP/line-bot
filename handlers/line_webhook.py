@@ -9,9 +9,7 @@ from config import LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN
 from services.proposal_service import ProposalService
 from services.booking_service import BookingService
 from repos.supabase_repo import SupabaseRepo
-
-import re
-from utils.i18n import get_msg
+from utils.i18n import get_msg, parse_index
 
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
@@ -21,10 +19,6 @@ repo = SupabaseRepo()
 
 api_client = ApiClient(configuration)
 messaging_api = MessagingApi(api_client)
-
-def _parse_index(text: str):
-    m = re.search(r'(\d+)', text)
-    return int(m.group(1)) if m else None
 
 def get_admin_view(line_user_id: str) -> dict:
     st = repo.get_state(line_user_id, "mode")
@@ -40,9 +34,11 @@ def _reply_text(reply_token: str, text: str):
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
-    line_user_id = event.source.user_id
-    text = event.message.text.strip()
+    line_user_id = event.source.user_id  
+    text = event.message.text.strip()    
 
+    reply = "未知的指令，請參考選單說明。"
+    
     # 1. 取得或初始化 Profile 與語系
     profile = repo.get_profile_by_line_user_id(line_user_id)
     if not profile:
@@ -58,32 +54,38 @@ def handle_message(event):
 
     # 2. 管理員模式判斷 (Impersonation)
     admin_view = get_admin_view(line_user_id) if role == "admin" else {}
-    effective_role = admin_view.get("as_role", role)
+    effective_role = admin_view.get("as_role")
+    if not effective_role:
+        effective_role = "student" if role == "admin" else role
+        
     admin_as_teacher_id = admin_view.get("as_teacher_id")
-
+    
     # ======================
     # 通用指令 (Common Commands)
     # ======================
     if text in ("切換語言", "Switch Language"):
         new_lang = "en" if lang == "zh" else "zh"
-        repo.update_profile(profile["id"], {"language": new_lang})
+        repo.update_profile_language(line_user_id, new_lang)
         _reply_text(event.reply_token, get_msg("menu.switch_lang", lang=new_lang))
         return
 
-    if text in ("取消流程", "Cancel"):
-        reply = proposal_service.student_cancel_flow(line_user_id)
+    if text in ("取消流程", "重新開始", "Cancel", "Reset"):
+        # 呼叫共用函式清除所有狀態
+        reply = proposal_service.cancel_any_flow(line_user_id)
         _reply_text(event.reply_token, reply)
         return
 
     # ======================
-    # 管理員專屬指令
+    # 管理員專屬指令 (僅 admin 可用)
     # ======================
     if role == "admin":
         if text == "切換學生":
-            repo.clear_state(line_user_id, "mode")
+            # 修正：明確更新狀態為扮演學生，不直接 clear
+            repo.upsert_state(line_user_id, "mode", "view", {"as_role": "student"})
             _reply_text(event.reply_token, get_msg("admin.switch_student", lang=lang))
             return
         elif text == "切換老師":
+            # 進入選老師流程或單純切換角色
             repo.upsert_state(line_user_id, "mode", "select", {"as_role": "teacher"})
             _reply_text(event.reply_token, get_msg("admin.switch_teacher", lang=lang))
             return
@@ -99,11 +101,11 @@ def handle_message(event):
             _reply_text(event.reply_token, "\n".join(lines))
             return
 
-        # 處理選老師後的輸入
+        # 處理選老師後的輸入 (pick_teacher 階段)
         state_mode = repo.get_state(line_user_id, "mode")
-        if state_mode and state_mode["step"] == "pick_teacher":
-            idx = _parse_index(text)
-            teacher_list = state_mode["payload"].get("list", [])
+        if state_mode and state_mode.get("step") == "pick_teacher":
+            idx = parse_index(text)
+            teacher_list = state_mode.get("payload", {}).get("list", [])
             if idx and 1 <= idx <= len(teacher_list):
                 target = teacher_list[idx-1]
                 repo.upsert_state(line_user_id, "mode", "view", {
@@ -115,52 +117,69 @@ def handle_message(event):
                 return
 
     # ======================
-    # 學生功能 (Student)
+    # 學生功能 (Student Flow)
     # ======================
     if effective_role == "student":
-        if text in ("提案", "Proposal"):
+        if text == "預約課程":
+            repo.clear_state(line_user_id, "student_action")
             reply = proposal_service.student_start_proposal(line_user_id)
-        elif text in ("取消提案", "Pending"):
+        
+        elif text == "查看預約課程":
             reply = proposal_service.student_list_pending(line_user_id)
-        elif text.startswith("取消提案 "):
-            idx = _parse_index(text)
-            reply = proposal_service.student_cancel_pending_by_index(line_user_id, idx)
-        elif text in ("取消課程", "Bookings"):
-            reply = booking_service.student_list_confirmed(line_user_id)
-        elif text.startswith("取消課程 "):
-            idx = _parse_index(text)
-            reply = booking_service.student_cancel_confirmed_by_index(line_user_id, idx)
-        elif text.startswith("查看課程 "):
-            b_id = _parse_index(text)
-            reply = booking_service.get_confirmed_booking_by_id(b_id, line_user_id=line_user_id)
+            # 進入流程：允許取消「提案」
+            repo.upsert_state(line_user_id, "student_action", "viewing_pending", {})
+            _reply_text(event.reply_token, reply)
+            return
+            
+        elif text == "我的課表":
+            # 呼叫共用函式
+            reply = booking_service.list_confirmed(line_user_id, "student")
+            # 進入流程：允許取消「課程」
+            repo.upsert_state(line_user_id, "student_action", "viewing_confirmed", {})
+            _reply_text(event.reply_token, reply)
+            return
+
         else:
-            # 檢查是否在提案流程中 (Wizard)
-            state = repo.get_state(line_user_id, "proposal_create")
-            if state:
+            # 判斷目前在哪個 Wizard 中
+            if repo.get_state(line_user_id, "proposal_create"):
                 reply = proposal_service.student_wizard_input(line_user_id, text)
+            elif repo.get_state(line_user_id, "student_action"):
+                reply = proposal_service.student_action_wizard(line_user_id, text)
             else:
                 reply = get_msg("common.unsupported_cmd", lang=lang)
 
     # ======================
-    # 老師功能 (Teacher)
+    # 老師功能 (Teacher Flow)
     # ======================
     elif effective_role == "teacher":
         t_prof_id = admin_as_teacher_id if role == "admin" else profile["id"]
+
+        # 1. 待確認課程 (進入審核流程)
+        if text == "待確認課程":
+            reply = proposal_service.teacher_list_pending(t_prof_id)
+            repo.upsert_state(line_user_id, "teacher_action", "viewing_pending", {
+                "teacher_profile_id": t_prof_id
+            })
+            _reply_text(event.reply_token, reply)
+            return
         
-        if not t_prof_id:
-            _reply_text(event.reply_token, get_msg("admin.switch_teacher", lang=lang))
+        # 2. 我的課表 (進入課表查看流程)
+        elif text == "我的課表":
+            # 呼叫共用函式 (先前建議的 list_confirmed)
+            reply = booking_service.list_confirmed(line_user_id, "teacher")
+            repo.upsert_state(line_user_id, "teacher_action", "viewing_confirmed", {
+                "teacher_profile_id": t_prof_id
+            })
+            _reply_text(event.reply_token, reply)
             return
 
-        if text in ("待審核", "Pending"):
-            reply = proposal_service.teacher_list_pending(t_prof_id)
-        elif text.startswith("接受"):
-            idx = _parse_index(text)
-            reply = proposal_service.teacher_accept_by_index(t_prof_id, idx) if idx else "Format: Accept 1"
-        elif text.startswith("拒絕"):
-            idx = _parse_index(text)
-            # 拒絕邏輯可延伸加入原因
-            reply = proposal_service.teacher_reject_by_index(t_prof_id, idx, "Teacher busy") if idx else "Format: Reject 1"
+        # 3. 處理流程中的輸入
         else:
-            reply = get_msg("common.unsupported_cmd", lang=lang)
-
+            teacher_state = repo.get_state(line_user_id, "teacher_action")
+            if teacher_state:
+                # 進入老師專用的行為 Wizard
+                reply = proposal_service.teacher_action_wizard(line_user_id, text)
+            else:
+                reply = get_msg("common.unsupported_cmd", lang=lang)
+                
     _reply_text(event.reply_token, reply)

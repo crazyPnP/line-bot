@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 def get_msg(path, lang='zh', **kwargs):
     """
@@ -21,3 +22,8 @@ def get_msg(path, lang='zh', **kwargs):
         return result.format(**kwargs) if kwargs else result
     except Exception:
         return path # 若找不到則回傳原路徑
+
+def parse_index(text: str):
+    """從字串中解析出第一個數字序號"""
+    m = re.search(r'(\d+)', text)
+    return int(m.group(1)) if m else None

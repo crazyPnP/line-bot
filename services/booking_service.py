@@ -20,44 +20,6 @@ class BookingService:
         now_dt = datetime.fromisoformat(now_utc_iso())
         return start_dt - now_dt >= timedelta(minutes=30)
 
-    # ===== Student: list confirmed bookings =====
-    def student_list_confirmed(self, line_user_id: str) -> str:
-        lang = self._get_lang(line_user_id)
-        profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        if not profile:
-            return get_msg("common.not_found_profile", lang=lang)
-
-        rows = self.repo.list_confirmed_bookings_for_profile(profile["id"])
-        # 篩選出該身分為學生的預約
-        rows = [r for r in rows if r.get("student_id") == profile["id"]]
-
-        if not rows:
-            return get_msg("booking.no_bookings", lang=lang)
-
-        teacher_ids = list({r.get("teacher_id") for r in rows if r.get("teacher_id")})
-        teacher_map = self.repo.get_profile_names_by_ids(teacher_ids)
-
-        # 組合列表訊息
-        lines = [get_msg("booking.list_title", lang=lang)]
-        
-        # 為了保持列表內容的語言一致性，我們根據語系定義標籤
-        t_label = "老師" if lang == "zh" else "Teacher"
-        time_label = "時間" if lang == "zh" else "Time"
-
-        for i, r in enumerate(rows, 1):
-            teacher_name = teacher_map.get(r["teacher_id"], "Teacher")
-            start = fmt_taipei(r["start_time"])
-            end = fmt_taipei(r["end_time"])
-
-            lines.append(
-                f"{i})\n"
-                f"{t_label}：{teacher_name}\n"
-                f"{time_label}：{start} ~ {end}\n"
-            )
-
-        lines.append(get_msg("booking.cancel_instr", lang=lang))
-        return "\n".join(lines)
-
     # ===== Student: cancel confirmed booking =====
     def student_cancel_confirmed_by_index(self, line_user_id: str, idx: int) -> str:
         lang = self._get_lang(line_user_id)
@@ -120,3 +82,54 @@ class BookingService:
             f"{lb['s']}：{student_name}\n"
             f"{lb['time']}：{start} ~ {end}"
         )
+        
+    def list_confirmed(self, line_user_id: str, role: str) -> str:
+        """學生與老師共用的課表查詢"""
+        lang = self._get_lang(line_user_id)
+        profile = self.repo.get_profile_by_line_user_id(line_user_id)
+        if not profile:
+            return get_msg("common.not_found_profile", lang=lang)
+
+        # 撈取所有已確認預約
+        all_rows = self.repo.list_confirmed_bookings_for_profile(profile["id"])
+        
+        # 根據角色過濾並定義顯示標籤
+        if role == "teacher":
+            rows = [r for r in all_rows if r.get("teacher_id") == profile["id"]]
+            other_label = "學生" if lang == "zh" else "Student"
+            other_key = "student_id"
+        else:
+            rows = [r for r in all_rows if r.get("student_id") == profile["id"]]
+            other_label = "老師" if lang == "zh" else "Teacher"
+            other_key = "teacher_id"
+
+        if not rows:
+            return get_msg("booking.no_bookings", lang=lang)
+
+        # 取得對方名稱
+        other_ids = list({r.get(other_key) for r in rows if r.get(other_key)})
+        name_map = self.repo.get_profile_names_by_ids(other_ids)
+
+        lines = [get_msg("booking.list_title", lang=lang)]
+        for i, r in enumerate(rows, 1):
+            name = name_map.get(r[other_key], "Unknown")
+            lines.append(f"{i}) {other_label}: {name} | {fmt_taipei(r['start_time'])}")
+
+        lines.append("\n" + get_msg("booking.cancel_instr", lang=lang))
+        return "\n".join(lines)
+
+    def teacher_cancel_confirmed_by_index(self, teacher_id: str, idx: int, line_user_id: str) -> str:
+        """老師端取消已成立課程"""
+        lang = self._get_lang(line_user_id)
+        rows = self.repo.list_confirmed_bookings_for_profile(teacher_id)
+        rows = [r for r in rows if r.get("teacher_id") == teacher_id]
+
+        if not rows or idx < 1 or idx > len(rows):
+            return get_msg("proposal.not_found", lang=lang, count=len(rows))
+
+        b = rows[idx - 1]
+        # 執行取消 (老師取消通常不設 30 分鐘限制，但會發送緊急通知)
+        self.repo.cancel_booking(booking_id=b["id"], cancel_by="teacher", reason="teacher_cancel")
+        
+        # 通知學生 (邏輯略...)
+        return get_msg("booking.cancel_success", lang=lang)
