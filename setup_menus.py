@@ -10,9 +10,9 @@ def main():
     # 請確保 static/images/ 下有這三張圖
     # 您可以先隨便找三張圖改名測試
     menus = [
-        ("student", "static/images/rich_menu_student.png"),
-        ("teacher", "static/images/rich_menu_teacher.png"),
-        ("admin", "static/images/rich_menu_admin.png")
+        ("student", "static/images/rich_menu_student.jpg"),
+        ("teacher", "static/images/rich_menu_teacher.jpg"),
+        ("admin", "static/images/rich_menu_admin.jpg")
     ]
 
     print("正在建立 Rich Menus...")

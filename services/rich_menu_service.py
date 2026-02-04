@@ -7,7 +7,7 @@ from config import (
 )
 from repos.supabase_repo import SupabaseRepo
 
-# 1. API 客戶端相關 (Client & API)
+# 1. 引用 API 客戶端
 from linebot.v3.messaging import (
     MessagingApi,
     MessagingApiBlob,
@@ -15,14 +15,14 @@ from linebot.v3.messaging import (
     Configuration
 )
 
-# 2. 資料模型相關 (Models) - 修正這裡
+# 2. 引用資料模型
+# 修正重點：移除 RichMenuAction，改用 MessageAction
 from linebot.v3.messaging.models import (
     RichMenuRequest,
     RichMenuArea,
     RichMenuBounds,
-    RichMenuAction,  # 這是 Rich Menu 專用的 Action
     RichMenuSize,
-    MessageAction    # 如果您使用 message 類型的動作，需引用此項或直接用 RichMenuAction
+    MessageAction  # 用這個來發送文字訊息
 )
 
 class RichMenuService:
@@ -51,32 +51,31 @@ class RichMenuService:
             areas=areas
         )
 
-        # 2. 建立選單物件 (使用 MessagingApi)
-        rich_menu_id = self.messaging_api.create_rich_menu(rich_menu_request).rich_menu_id
-        
-        # 3. 上傳圖片 (修正：必須使用 Blob API)
         try:
+            # 2. 建立選單物件
+            rich_menu_id = self.messaging_api.create_rich_menu(rich_menu_request).rich_menu_id
+            
+            # 3. 上傳圖片 (使用 Blob API)
+            # 確保 Content-Type 正確，這是上傳圖片的關鍵
             with open(image_path, 'rb') as f:
                 image_bytes = f.read()
-                # 注意：v3 上傳圖片使用的是 blob_api
                 self.blob_api.set_rich_menu_image(
                     rich_menu_id=rich_menu_id,
                     body=image_bytes,
-                    _headers={'Content-Type': 'image/jpeg'} # 明確指定 Content-Type
+                    _headers={'Content-Type': 'image/jpeg'}
                 )
+            
             print(f"✅ Created Rich Menu for {role}: {rich_menu_id}")
             return rich_menu_id
+
         except Exception as e:
-            print(f"❌ Failed to upload image for {role}: {e}")
-            # 如果圖片上傳失敗，建議刪除建立好的 menu 以免殘留
-            self.messaging_api.delete_rich_menu(rich_menu_id)
+            print(f"❌ Failed to create menu/upload image for {role}: {e}")
             return None
 
     def link_user_menu(self, line_user_id: str, role: str):
         """
         將指定使用者的選單切換為該角色對應的選單
         """
-        # 2. 修改讀取方式：直接使用 config 變數，而非 os.getenv
         menu_id = None
         if role == "student":
             menu_id = RICH_MENU_STUDENT_ID
@@ -95,41 +94,64 @@ class RichMenuService:
             print(f"No menu ID found for role: {role} in config.py")
 
     def _get_areas_by_role(self, role: str):
-        """定義按鈕區域與觸發文字 (需與 webhook 關鍵字一致)"""
+        """定義按鈕區域與觸發文字"""
+        # 修正重點：將 action=RichMenuAction(...) 改為 action=MessageAction(...)
+        # MessageAction 不需要 type="message" 參數，因為類別本身就代表訊息動作
+
         if role == "student":
             # 學生選單 (2500x1686)
             return [
-                RichMenuArea(bounds=RichMenuBounds(x=0, y=0, width=1250, height=843), 
-                             action=RichMenuAction(type="message", label="預約", text="預約課程")),
-                RichMenuArea(bounds=RichMenuBounds(x=1250, y=0, width=1250, height=843), 
-                             action=RichMenuAction(type="message", label="待確認", text="查看預約課程")),
-                RichMenuArea(bounds=RichMenuBounds(x=0, y=843, width=1250, height=843), 
-                             action=RichMenuAction(type="message", label="課表", text="我的課表")),
-                RichMenuArea(bounds=RichMenuBounds(x=1250, y=843, width=1250, height=843), 
-                             action=RichMenuAction(type="message", label="重置", text="重新開始"))
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=0, y=0, width=1250, height=843), 
+                    action=MessageAction(label="預約", text="預約課程")
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=1250, y=0, width=1250, height=843), 
+                    action=MessageAction(label="待確認", text="查看預約課程")
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=0, y=843, width=1250, height=843), 
+                    action=MessageAction(label="課表", text="我的課表")
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=1250, y=843, width=1250, height=843), 
+                    action=MessageAction(label="重置", text="重新開始")
+                )
             ]
         
         elif role == "teacher":
             # 老師選單 (2500x843)
             w = 2500 // 3
             return [
-                RichMenuArea(bounds=RichMenuBounds(x=0, y=0, width=w, height=843), 
-                             action=RichMenuAction(type="message", label="審核", text="待確認課程")),
-                RichMenuArea(bounds=RichMenuBounds(x=w, y=0, width=w, height=843), 
-                             action=RichMenuAction(type="message", label="課表", text="我的課表")),
-                RichMenuArea(bounds=RichMenuBounds(x=w*2, y=0, width=2500-w*2, height=843), 
-                             action=RichMenuAction(type="message", label="重置", text="重新開始"))
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=0, y=0, width=w, height=843), 
+                    action=MessageAction(label="審核", text="待確認課程")
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=w, y=0, width=w, height=843), 
+                    action=MessageAction(label="課表", text="我的課表")
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=w*2, y=0, width=2500-w*2, height=843), 
+                    action=MessageAction(label="重置", text="重新開始")
+                )
             ]
 
         elif role == "admin":
              # Admin 選單 (2500x843)
             w = 2500 // 3
             return [
-                RichMenuArea(bounds=RichMenuBounds(x=0, y=0, width=w, height=843), 
-                             action=RichMenuAction(type="message", label="審核老師", text="審核老師")),
-                RichMenuArea(bounds=RichMenuBounds(x=w, y=0, width=w, height=843), 
-                             action=RichMenuAction(type="message", label="選老師", text="選老師")),
-                RichMenuArea(bounds=RichMenuBounds(x=w*2, y=0, width=2500-w*2, height=843), 
-                             action=RichMenuAction(type="message", label="重置", text="重新開始"))
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=0, y=0, width=w, height=843), 
+                    action=MessageAction(label="審核老師", text="審核老師")
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=w, y=0, width=w, height=843), 
+                    action=MessageAction(label="選老師", text="選老師")
+                ),
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=w*2, y=0, width=2500-w*2, height=843), 
+                    action=MessageAction(label="重置", text="重新開始")
+                )
             ]
         return []
