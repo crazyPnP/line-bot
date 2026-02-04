@@ -10,15 +10,16 @@ from services.proposal_service import ProposalService
 from services.booking_service import BookingService
 from repos.supabase_repo import SupabaseRepo
 from utils.i18n import get_msg, parse_index
+from services.user_service import UserService
 
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 proposal_service = ProposalService()
 booking_service = BookingService()
 repo = SupabaseRepo()
-
 api_client = ApiClient(configuration)
 messaging_api = MessagingApi(api_client)
+user_service = UserService()
 
 def get_admin_view(line_user_id: str) -> dict:
     st = repo.get_state(line_user_id, "mode")
@@ -37,22 +38,38 @@ def handle_message(event):
     line_user_id = event.source.user_id  
     text = event.message.text.strip()    
 
-    reply = "未知的指令，請參考選單說明。"
-    
-    # 1. 取得或初始化 Profile 與語系
+    try:
+        user_profile_resp = messaging_api.get_profile(line_user_id)
+        display_name = user_profile_resp.display_name
+    except:
+        display_name = "User"
+        
+    # ==========================================
+    # 1. 註冊檢核與流程 (Registration Flow)
+    # ==========================================
     profile = repo.get_profile_by_line_user_id(line_user_id)
-    if not profile:
-        # 初次註冊
-        repo.create_profile({"line_user_id": line_user_id, "role": "student", "language": "zh", "name": "User"})
-        profile = repo.get_profile_by_line_user_id(line_user_id)
-        lang = "zh"
-        _reply_text(event.reply_token, get_msg("menu.welcome", lang=lang, name="User"))
+    
+    # 如果沒有 Profile，或者正在註冊狀態中 -> 進入註冊 Service
+    if not profile or repo.get_state(line_user_id, "registration"):
+        reply = user_service.handle_registration(line_user_id, text, display_name)
+        _reply_text(event.reply_token, reply)
         return
 
+    # 若已註冊，取得基本資訊
     lang = profile.get("language", "zh")
     role = profile.get("role", "student")
 
-    # 2. 管理員模式判斷 (Impersonation)
+    # ==========================================
+    # 2. 待審核狀態阻擋 (Pending Check)
+    # ==========================================
+    if role == "teacher_pending":
+        _reply_text(event.reply_token, get_msg("reg.pending_alert", lang=lang))
+        return
+
+    # ==========================================
+    # 3. 正常業務流程 (Existing Flows)
+    # ==========================================
+    
     admin_view = get_admin_view(line_user_id) if role == "admin" else {}
     effective_role = admin_view.get("as_role")
     if not effective_role:

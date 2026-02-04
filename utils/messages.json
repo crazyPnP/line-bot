@@ -1,11 +1,10 @@
 {
   "zh": {
     "common": {
-      "cancel": "✅ 已中斷目前流程並回到初始狀態。您可以重新開始操作。",
-      "error_occurred": "發生錯誤，請稍後再試。",
-      "invalid_input": "輸入格式錯誤，請重新輸入。",
-      "not_found_profile": "找不到你的 profile，請稍後再試。",
-      "unsupported_cmd": "指令未支援"
+      "unsupported_cmd": "未知的指令，請參考選單說明。",
+        "invalid_input": "輸入格式錯誤，請重試。",
+        "not_found_profile": "找不到使用者資料。",
+        "cancel": "✅ 已中斷目前流程並回到初始狀態。您可以重新開始操作。"
     },
     "proposal": {
       "start": "📝 開始建立提案",
@@ -57,24 +56,34 @@
       "notify_rejected": "❌ 你的提案被 {teacher} 拒絕。\n原因：{reason}"
     },
     "admin": {
-        "switch_student": "✅ 已切換為【學生模式】",
-        "switch_teacher": "✅ 已切換為【老師模式】\n請輸入「選老師」選擇要代入的老師。",
-        "no_teachers": "目前沒有老師可選。",
-        "select_teacher_idx": "請輸入要代入的老師序號：",
-        "teacher_impersonated": "✅ 已代入老師：{name}\n你可以輸入「待審核」查看提案。"
+        "switch_student": "已切換為「學生」視角",
+      "switch_teacher": "已切換為「老師」視角",
+      "no_teachers": "目前沒有老師資料",
+      "select_teacher_idx": "請選擇要扮演的老師序號：",
+      "teacher_impersonated": "已切換身分，目前扮演老師：{name}",
+      "no_pending_teachers": "目前沒有待審核的老師申請。",
+      "pending_teacher_list": "📋 待審核老師列表：",
+      "approve_success": "✅ 已成功開通 {name} 的老師權限。",
+      "approve_instr": "輸入『通過 序號』來開通權限。"
     },
     "menu": {
-        "welcome": "👋 歡迎 {name}！\n已自動將你的身分註冊為「學生」。\n\n您可以點選下方選單開始預約課程。",
-        "switch_lang": "語言已切換為中文"
+        "welcome": "歡迎 {name}！註冊成功。",
+        "switch_lang": "已切換語言至中文"
+    },
+    "reg": {
+      "ask_lang": "👋 歡迎來到 courseDB！\n請選擇您的語言 (Please select your language)：\n\n1) 中文\n2) English\n\n請輸入數字 1 或 2。",
+      "ask_role": "請選擇您的身分：\n\n1) 學生\n2) 老師 (需管理員審核)\n\n請輸入數字 1 或 2。",
+      "complete_student": "註冊成功！您現在是「學生」身分。",
+      "complete_teacher_pending": "申請已送出！您的「老師」身分正在審核中，請等待管理員開通權限。",
+      "pending_alert": "⚠️ 您的帳號目前處於「待審核」狀態，暫時無法使用老師功能。請聯繫管理員。"
     }
   },
   "en": {
     "common": {
-      "cancel": "✅ Current process has been reset. You can start over now.",
-      "error_occurred": "An error occurred, please try again later.",
-      "invalid_input": "Invalid format, please try again.",
-      "not_found_profile": "Profile not found, please try again later.",
-      "unsupported_cmd": "Command not supported"
+      "unsupported_cmd": "Unknown command. Please check the menu.",
+      "invalid_input": "Invalid input. Please try again.",
+      "not_found_profile": "User profile not found.",
+      "cancel": "✅ Current process has been reset. You can start over now."
     },
     "proposal": {
       "start": "📝 Start creating a proposal",
@@ -126,15 +135,26 @@
       "notify_rejected": "❌ Your proposal was rejected by {teacher}.\nReason: {reason}"
     },
     "admin": {
-        "switch_student": "✅ Switched to [Student Mode]",
-        "switch_teacher": "✅ Switched to [Teacher Mode]\nType 'Select Teacher' to impersonate.",
-        "no_teachers": "No teachers available.",
-        "select_teacher_idx": "Enter teacher index to impersonate:",
-        "teacher_impersonated": "✅ Impersonating: {name}\nYou can type 'Pending' to view proposals."
+       "switch_student": "Switched to 'Student' view",
+       "switch_teacher": "Switched to 'Teacher' view",
+       "no_teachers": "No teachers found",
+       "select_teacher_idx": "Select a teacher index to impersonate:",
+       "teacher_impersonated": "Impersonating teacher: {name}",
+       "no_pending_teachers": "No pending teacher applications.",
+       "pending_teacher_list": "📋 Pending Teacher Applications:",
+       "approve_success": "✅ Successfully approved teacher: {name}.",
+       "approve_instr": "Enter 'Approve Index' to grant access."
     },
     "menu": {
-        "welcome": "👋 Welcome {name}!\nYou have been registered as a 'Student'.\n\nYou can use the menu below to start booking.",
+        "welcome": "Welcome {name}! Registration complete.",
         "switch_lang": "Language switched to English"
+    },
+    "reg": {
+      "ask_lang": "👋 Welcome to courseDB!\nPlease select your language:\n\n1) Chinese\n2) English\n\nPlease enter 1 or 2.",
+      "ask_role": "Please select your role:\n\n1) Student\n2) Teacher (Requires Admin Approval)\n\nPlease enter 1 or 2.",
+      "complete_student": "Registration successful! You are now a 'Student'.",
+      "complete_teacher_pending": "Application submitted! Your 'Teacher' account is pending approval. Please wait for the admin.",
+      "pending_alert": "⚠️ Your account is currently 'Pending Approval'. You cannot access teacher features yet."
     }
   }
 }
