@@ -3,13 +3,15 @@ from utils.i18n import get_msg, parse_index
 from services.line_notify import LinePushService
 from linebot.v3.messaging import Configuration
 from config import LINE_CHANNEL_ACCESS_TOKEN
+from services.rich_menu_service import RichMenuService
 
 class UserService:
     def __init__(self):
         self.repo = SupabaseRepo()
         # 如果需要通知管理員，可以使用 push service
         self.push = LinePushService(Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN))
-
+        self.rich_menu = RichMenuService()
+        
     def handle_registration(self, line_user_id: str, user_text: str, user_display_name: str) -> str:
         """處理初次註冊的 Wizard 流程"""
         # 1. 檢查是否已有流程狀態
@@ -65,6 +67,15 @@ class UserService:
             # 清除註冊狀態
             self.repo.clear_state(line_user_id, "registration")
             
+            # === 新增：根據角色綁定選單 ===
+            if role == "student":
+                self.rich_menu.link_user_menu(line_user_id, "student")
+            elif role == "teacher_pending":
+                # 待審核時，可以先給 student 選單，或者不給選單(預設)
+                # 這裡選擇不給，或者您可以做一個 "guest" 選單
+                pass 
+            # ==========================
+            
             return get_msg(reply_key, lang=lang)
 
         return "Registration Error"
@@ -95,7 +106,12 @@ class UserService:
         target = pending_list[idx - 1]
         self.repo.update_profile_role(target["id"], "teacher")
         
-        # 這裡可以選擇性地發送 Push Message 通知該位老師 (需實作)
-        # self.push.push_text(target['line_user_id'], "Admin approved your account!")
+        # === 新增：審核通過後，幫該老師切換成 Teacher 選單 ===
+        target_line_id = target.get("line_user_id") # 需確認 list_pending_teachers 有 select line_user_id
+        if target_line_id:
+             self.rich_menu.link_user_menu(target_line_id, "teacher")
+             # 發送通知
+             self.push.push_text(target_line_id, "🎉 恭喜！您的老師權限已開通，選單已更新。")
+        # ==========================
 
         return get_msg("admin.approve_success", lang=lang, name=target["name"])

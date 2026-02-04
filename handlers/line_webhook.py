@@ -11,6 +11,7 @@ from services.booking_service import BookingService
 from repos.supabase_repo import SupabaseRepo
 from utils.i18n import get_msg, parse_index
 from services.user_service import UserService
+from services.rich_menu_service import RichMenuService
 
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
@@ -20,6 +21,7 @@ repo = SupabaseRepo()
 api_client = ApiClient(configuration)
 messaging_api = MessagingApi(api_client)
 user_service = UserService()
+rich_menu_service = RichMenuService()
 
 def get_admin_view(line_user_id: str) -> dict:
     st = repo.get_state(line_user_id, "mode")
@@ -59,6 +61,11 @@ def handle_message(event):
     lang = profile.get("language", "zh")
     role = profile.get("role", "student")
 
+    if text == "更新選單":
+        role = profile.get("role", "student")
+        rich_menu_service.link_user_menu(line_user_id, role)
+        _reply_text(event.reply_token, "✅ 選單已強制更新！")
+        return
     # ==========================================
     # 2. 待審核狀態阻擋 (Pending Check)
     # ==========================================
