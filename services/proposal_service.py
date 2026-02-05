@@ -243,17 +243,106 @@ class ProposalService:
 
     def student_wizard_input(self, line_user_id: str, text: str) -> str:
         """
-        學生預約流程的 Wizard
+        學生預約流程的 Wizard (狀態機處理)
         """
+        # 1. 取得 Profile 與 Lang (一次查詢)
         profile = self.repo.get_profile_by_line_user_id(line_user_id)
         if not profile: return "Profile Error"
         lang = profile.get("language", "zh")
 
-        # 這裡省略具體的狀態機邏輯，與您現有代碼保持一致
-        # 重點是：在這個方法開頭取得 profile 與 lang，
-        # 後續的所有步驟 (save state, create proposal) 都可以直接使用 profile['id']
-        # 而不需要再次查詢。
-        
+        # 2. 取得目前的對話狀態
+        state = self.repo.get_state(line_user_id, "proposal_create")
+        if not state:
+            # 如果沒有狀態，代表流程已中斷或過期
+            return get_msg("common.unsupported_cmd", lang=lang)
+
+        step = state["step"]
+        payload = state.get("payload") or {}
+
+        # === Step 1: 選擇課程模式 (Mode) ===
+        if step == "mode":
+            idx = parse_index(text)
+            # 定義選項對映
+            modes = {1: "conversation", 2: "grammar", 3: "kids"}
+            
+            if idx in modes:
+                # 儲存選擇
+                payload["class_mode"] = modes[idx]
+                
+                # 更新狀態到下一步：詢問時間 (Time)
+                self.repo.upsert_state(line_user_id, "proposal_create", "time", payload)
+                
+                return get_msg("proposal.ask_time", lang=lang)
+            else:
+                return get_msg("common.invalid_input", lang=lang)
+
+        # === Step 2: 輸入時間 (Time) ===
+        elif step == "time":
+            # 這裡暫時做簡單的字串儲存
+            # TODO: 建議未來加入日期格式檢查 (如 YYYY-MM-DD HH:MM)
+            payload["time_text"] = text
+            
+            # 更新狀態到下一步：確認 (Confirm)
+            self.repo.upsert_state(line_user_id, "proposal_create", "confirm", payload)
+            
+            # 準備確認訊息的參數
+            mode_map = {"conversation": "對話 (Conversation)", "grammar": "文法 (Grammar)", "kids": "兒童 (Kids)"}
+            mode_label = mode_map.get(payload["class_mode"], payload["class_mode"])
+            
+            return get_msg("proposal.confirm_details", lang=lang, 
+                           mode=mode_label, 
+                           time=text)
+
+        # === Step 3: 最終確認 (Confirm) ===
+        elif step == "confirm":
+            # 接受的肯定詞
+            if text.lower() in ["yes", "y", "ok", "1", "確認", "是"]:
+                
+                # 嘗試解析時間並計算結束時間 (預設+50分鐘)
+                # 這裡使用簡單的字串處理，建議輸入標準 ISO 格式 (例如: 2023-10-30 10:00)
+                start_txt = payload.get("time_text")
+                try:
+                    # 嘗試利用 dateutil 解析 (如果環境有安裝)
+                    from dateutil import parser
+                    dt = parser.parse(start_txt)
+                    end_dt = dt + timedelta(minutes=50)
+                    start_iso = dt.isoformat()
+                    end_iso = end_dt.isoformat()
+                except:
+                    # 如果解析失敗，回退到原始字串 (可能會導致寫入資料庫失敗)
+                    # 建議在 production 環境強制要求格式
+                    start_iso = start_txt
+                    end_iso = start_txt 
+
+                # 建立提案資料
+                proposal_data = {
+                    "proposed_by": profile["id"],
+                    "proposed_by_role": "student",
+                    "class_mode": payload.get("class_mode"),
+                    "start_time": start_iso,
+                    "end_time": end_iso,
+                    "status": "pending",
+                    "created_at": now_utc_iso()
+                }
+                
+                # 寫入資料庫
+                self.repo.create_time_proposal(proposal_data)
+                
+                # 清除狀態
+                self.repo.clear_state(line_user_id, "proposal_create")
+                
+                # (選用) 這裡可以加入通知老師的邏輯
+                
+                return get_msg("proposal.created_success", lang=lang)
+            
+            # 否定詞 -> 取消
+            elif text.lower() in ["no", "n", "cancel", "2", "取消", "否"]:
+                self.repo.clear_state(line_user_id, "proposal_create")
+                return get_msg("common.cancel", lang=lang)
+            
+            else:
+                return get_msg("common.invalid_input", lang=lang)
+
         return get_msg("common.unsupported_cmd", lang=lang)
     
     def cancel_any_flow(self, line_user_id: str) -> str:

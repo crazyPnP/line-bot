@@ -28,7 +28,11 @@
       "cancel_pending_idx": "取消請輸入：取消提案 1",
       "cancel_pending_success": "✅ 已取消提案 #{idx}\n\n老師：{teacher}\n時間：{time}",
       "cancel_pending_fail": "取消失敗：找不到提案或提案已不是 pending。",
-      "wizard_error": "流程狀態異常，請輸入「提案」重新開始。"
+      "wizard_error": "流程狀態異常，請輸入「提案」重新開始。",
+      "ask_mode": "請選擇課程類型（輸入數字）\n1) 對話\n2) 文法\n3) 小孩學英文",
+      "ask_time": "請輸入希望上課的時間\n格式範例：2023-10-20 14:00",
+      "confirm_details": "請確認您的預約資訊：\n\n類別：{mode}\n時間：{time}\n\n1) 確認 (Yes)\n2) 取消 (No)",
+      "created_success": "✅ 提案已送出！請等待老師審核。"
     },
     "booking": {
       "list_title": "📌 你的已成立課程：",
@@ -107,7 +111,11 @@
       "cancel_pending_idx": "To cancel, enter: Cancel Proposal 1",
       "cancel_pending_success": "✅ Proposal #{idx} canceled.\n\nTeacher: {teacher}\nTime: {time}",
       "cancel_pending_fail": "Cancel failed: Proposal not found or no longer pending.",
-      "wizard_error": "Process error, type 'Proposal' to restart."
+      "wizard_error": "Process error, type 'Proposal' to restart.",
+      "ask_mode": "Please select class type (Enter number)\n1) Conversation\n2) Grammar\n3) Kids",
+      "ask_time": "Please enter your preferred time.\nFormat: 2023-10-20 14:00",
+      "confirm_details": "Please confirm your booking:\n\nMode: {mode}\nTime: {time}\n\n1) Confirm (Yes)\n2) Cancel (No)",
+      "created_success": "✅ Proposal submitted! Please wait for teacher approval."
     },
     "booking": {
       "list_title": "📌 Your confirmed bookings:",

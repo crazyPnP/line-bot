@@ -60,8 +60,7 @@ class BookingService:
 
     def student_cancel_confirmed_by_index(self, line_user_id: str, idx: int) -> str:
         """
-        學生取消已成立課程
-        優化：移除 _get_lang 的重複查詢
+        學生取消已確認課程 (By Index)
         """
         # 1. 查詢 Profile
         profile = self.repo.get_profile_by_line_user_id(line_user_id)
