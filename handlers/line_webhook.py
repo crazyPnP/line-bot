@@ -63,6 +63,7 @@ def handle_message(event):
 
         lang = profile.get("language", "zh")
         role = profile.get("role", "student")
+        profile_name = profile.get("name", display_name)
 
         if text == "更新選單":
             role = profile.get("role", "student")
@@ -82,6 +83,7 @@ def handle_message(event):
             effective_role = "student" if role == "admin" else role
             
         admin_as_teacher_id = admin_view.get("as_teacher_id")
+        admin_as_teacher_name = admin_view.get("as_teacher_name")
         
         # --- 通用指令 ---
         if text in ("切換語言", "Switch Language"):
@@ -91,7 +93,7 @@ def handle_message(event):
             return
 
         if text in ("取消流程", "重新開始", "Cancel", "Reset"):
-            reply = proposal_service.cancel_any_flow(line_user_id)
+            reply = proposal_service.cancel_any_flow(line_user_id, lang)
             _reply_text(event.reply_token, reply)
             return
 
@@ -135,35 +137,32 @@ def handle_message(event):
         if effective_role == "student":
             if text == "預約課程":
                 repo.clear_state(line_user_id, "student_action")
-                reply = proposal_service.student_start_proposal(line_user_id)
+                reply = proposal_service.student_start_proposal(line_user_id, lang)
             
             elif text == "查看預約課程":
                 repo.clear_state(line_user_id, "proposal_create")
-                reply = proposal_service.student_list_pending(line_user_id)
+                reply = proposal_service.student_list_pending(profile["id"], lang)
                 repo.upsert_state(line_user_id, "student_action", "viewing_pending", {})
                 _reply_text(event.reply_token, reply)
                 return
                 
             elif text == "我的課表":
                 repo.clear_state(line_user_id, "proposal_create")
-                reply = booking_service.list_confirmed(line_user_id, "student")
+                reply = booking_service.list_confirmed(profile["id"], "student", lang)
                 repo.upsert_state(line_user_id, "student_action", "viewing_confirmed", {})
                 _reply_text(event.reply_token, reply)
                 return
 
             else:
-                # 【關鍵修改】：讓 Webhook 來負責路由，把職責分清楚
                 if repo.get_state(line_user_id, "proposal_create"):
-                    reply = proposal_service.student_wizard_input(line_user_id, text)
-                    
+                    reply = proposal_service.student_wizard_input(line_user_id, profile["id"], text, lang)
                 elif state_data := repo.get_state(line_user_id, "student_action"):
                     step = state_data.get("step")
+                    # 🚥 交通警察：根據 step 分流給不同的 Service 🚥
                     if step == "viewing_pending":
-                        # 待確認提案 -> 交給 ProposalService
-                        reply = proposal_service.handle_student_pending_action(line_user_id, text, lang)
+                        reply = proposal_service.handle_student_pending_action(line_user_id, profile["id"], text, lang)
                     elif step == "viewing_confirmed":
-                        # 已確認訂單 -> 交給 BookingService
-                        reply = booking_service.handle_student_confirmed_action(line_user_id, text, lang)
+                        reply = booking_service.handle_student_confirmed_action(line_user_id, profile["id"], text, lang)
                     else:
                         reply = get_msg("common.unsupported_cmd", lang=lang)
                 else:
@@ -171,18 +170,20 @@ def handle_message(event):
 
         # --- 老師功能 ---
         elif effective_role == "teacher":
-            t_prof_id = admin_as_teacher_id if role == "admin" else profile["id"]
+            t_prof_id = admin_as_teacher_id if role == "admin" and admin_as_teacher_id else profile["id"]
+            t_prof_name = admin_as_teacher_name if role == "admin" and admin_as_teacher_name else profile_name
 
             if text == "待確認課程":
-                reply = proposal_service.teacher_list_pending(t_prof_id)
+                reply = proposal_service.teacher_list_pending(t_prof_id, lang)
                 repo.upsert_state(line_user_id, "teacher_action", "viewing_pending", {
-                    "teacher_profile_id": t_prof_id
+                    "teacher_profile_id": t_prof_id,
+                    "teacher_name": t_prof_name
                 })
                 _reply_text(event.reply_token, reply)
                 return
             
             elif text == "我的課表":
-                reply = booking_service.list_confirmed(line_user_id, "teacher")
+                reply = booking_service.list_confirmed(t_prof_id, "teacher", lang)
                 repo.upsert_state(line_user_id, "teacher_action", "viewing_confirmed", {
                     "teacher_profile_id": t_prof_id
                 })
@@ -190,17 +191,16 @@ def handle_message(event):
                 return
 
             else:
-                # 【關鍵修改】：讓 Webhook 來負責路由，把職責分清楚
                 if state_data := repo.get_state(line_user_id, "teacher_action"):
                     step = state_data.get("step")
                     payload = state_data.get("payload") or {}
-                    t_id = payload.get("teacher_profile_id")
+                    t_id = payload.get("teacher_profile_id") or t_prof_id
+                    t_name = payload.get("teacher_name") or t_prof_name
 
+                    # 🚥 交通警察：根據 step 分流給不同的 Service 🚥
                     if step == "viewing_pending":
-                        # 待確認提案 -> 交給 ProposalService
-                        reply = proposal_service.handle_teacher_pending_action(line_user_id, t_id, text, lang)
+                        reply = proposal_service.handle_teacher_pending_action(line_user_id, t_id, text, lang, t_name)
                     elif step == "viewing_confirmed":
-                        # 已確認訂單 -> 交給 BookingService
                         reply = booking_service.handle_teacher_confirmed_action(line_user_id, t_id, text, lang)
                     else:
                         reply = get_msg("common.unsupported_cmd", lang=lang)

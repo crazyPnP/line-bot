@@ -12,19 +12,12 @@ class ProposalService:
         self.repo = SupabaseRepo()
         self.push = LinePushService(Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN))
 
-    def student_start_proposal(self, line_user_id: str) -> str:
-        profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        if not profile: return get_msg("common.not_found_profile", "zh")
-        lang = profile.get("language", "zh")
+    def student_start_proposal(self, line_user_id: str, lang: str) -> str:
         self.repo.upsert_state(line_user_id, "proposal_create", "mode", {})
         return get_msg("proposal.ask_mode", lang=lang)
 
-    def student_list_pending(self, line_user_id: str) -> str:
-        profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        if not profile: return get_msg("common.not_found_profile", "zh")
-        lang = profile.get("language", "zh")
-
-        rows = self.repo.list_student_pending_proposals(profile["id"])
+    def student_list_pending(self, student_profile_id: str, lang: str) -> str:
+        rows = self.repo.list_student_pending_proposals(student_profile_id)
         if not rows:
             return get_msg("proposal.no_pending", lang=lang)
 
@@ -43,18 +36,14 @@ class ProposalService:
         lines.append("\n" + get_msg("proposal.cancel_instr", lang=lang))
         return "\n".join(lines)
 
-    def student_cancel_pending_by_index(self, line_user_id: str, idx: int) -> str:
-        profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        if not profile: return get_msg("common.not_found_profile", "zh")
-        lang = profile.get("language", "zh")
-
-        rows = self.repo.list_student_pending_proposals(profile["id"])
+    def student_cancel_pending_by_index(self, student_profile_id: str, idx: int, lang: str) -> str:
+        rows = self.repo.list_student_pending_proposals(student_profile_id)
         if not rows or idx < 1 or idx > len(rows):
             return get_msg("proposal.not_found", lang=lang, count=len(rows or []))
 
         r = rows[idx - 1]
         
-        if self.repo.cancel_student_pending_proposal(r["id"], profile["id"]):
+        if self.repo.cancel_student_pending_proposal(r["id"], student_profile_id):
             mode_key = r.get("class_mode", "conversation")
             mode_map_dict = {
                 "conversation": get_msg("mode.conversation", lang=lang),
@@ -71,11 +60,7 @@ class ProposalService:
         
         return get_msg("proposal.cancel_pending_fail", lang=lang)
 
-    def teacher_list_pending(self, teacher_profile_id: str) -> str:
-        t_prof = self.repo.get_profile_by_id(teacher_profile_id)
-        if not t_prof: return "Teacher profile not found"
-        lang = t_prof.get("language", "zh")
-
+    def teacher_list_pending(self, teacher_profile_id: str, lang: str) -> str:
         rows = self.repo.list_pending_proposals_for_teacher(teacher_profile_id)
         if not rows:
             return get_msg("teacher.no_pending", lang=lang)
@@ -99,11 +84,7 @@ class ProposalService:
         lines.append("\n" + get_msg("teacher.action_instr", lang=lang))
         return "\n".join(lines)
 
-    def teacher_accept_by_index(self, teacher_profile_id: str, idx: int) -> str:
-        t_prof = self.repo.get_profile_by_id(teacher_profile_id)
-        if not t_prof: return "Profile error"
-        lang = t_prof.get("language", "zh")
-
+    def teacher_accept_by_index(self, teacher_profile_id: str, idx: int, lang: str, teacher_name: str) -> str:
         rows = self.repo.list_pending_proposals_for_teacher(teacher_profile_id)
         if not rows or idx < 1 or idx > len(rows):
             return get_msg("proposal.not_found", lang=lang, count=len(rows or []))
@@ -117,7 +98,7 @@ class ProposalService:
                 s_prof = self.repo.get_profile_by_id(p["proposed_by"])
                 s_lang = s_prof.get("language", "zh") if s_prof else "zh"
                 msg = get_msg("student.notify_accepted", lang=s_lang, 
-                              teacher=t_prof.get("name", "Teacher"), 
+                              teacher=teacher_name, 
                               time=fmt_taipei(p["start_time"]))
                 self.push.push_text(student_line_id, msg)
 
@@ -125,11 +106,7 @@ class ProposalService:
         
         return get_msg("teacher.accept_fail", lang=lang)
 
-    def teacher_reject_by_index(self, teacher_profile_id: str, idx: int, reason: str) -> str:
-        t_prof = self.repo.get_profile_by_id(teacher_profile_id)
-        if not t_prof: return "Profile error"
-        lang = t_prof.get("language", "zh")
-
+    def teacher_reject_by_index(self, teacher_profile_id: str, idx: int, reason: str, lang: str, teacher_name: str) -> str:
         rows = self.repo.list_pending_proposals_for_teacher(teacher_profile_id)
         if not rows or idx < 1 or idx > len(rows):
             return get_msg("proposal.not_found", lang=lang, count=len(rows or []))
@@ -147,49 +124,43 @@ class ProposalService:
             s_prof = self.repo.get_profile_by_id(p["proposed_by"])
             s_lang = s_prof.get("language", "zh") if s_prof else "zh"
             msg = get_msg("teacher.notify_rejected", lang=s_lang, 
-                          teacher=t_prof.get("name", "Teacher"), 
+                          teacher=teacher_name, 
                           reason=reason or "No reason provided")
             self.push.push_text(student_line_id, msg)
 
         return get_msg("teacher.reject_success", lang=lang, idx=idx)
 
-    # === [重構後] 專屬處理 Pending 狀態的邏輯 ===
-    def handle_student_pending_action(self, line_user_id: str, user_text: str, lang: str) -> str:
-        """專處理學生查看 Pending 提案時的對話"""
+    # === [重構後] 乾淨的 Pending 處理入口 ===
+    def handle_student_pending_action(self, line_user_id: str, student_profile_id: str, user_text: str, lang: str) -> str:
         if user_text.startswith("Cancel") or user_text.startswith("取消"):
             idx = parse_index(user_text)
             if idx is None: return get_msg("common.invalid_input", lang=lang)
             
-            reply = self.student_cancel_pending_by_index(line_user_id, idx)
+            reply = self.student_cancel_pending_by_index(student_profile_id, idx, lang)
             self.repo.clear_state(line_user_id, "student_action")
             return reply
             
         self.repo.clear_state(line_user_id, "student_action")
         return get_msg("common.action_cancelled", lang=lang)
 
-    def handle_teacher_pending_action(self, line_user_id: str, t_id: str, user_text: str, lang: str) -> str:
-        """專處理老師查看 Pending 提案時的對話"""
+    def handle_teacher_pending_action(self, line_user_id: str, teacher_profile_id: str, user_text: str, lang: str, teacher_name: str) -> str:
         if user_text.startswith("Accept") or user_text.startswith("接受"):
-            reply = self.teacher_accept_by_index(t_id, parse_index(user_text))
+            idx = parse_index(user_text)
+            reply = self.teacher_accept_by_index(teacher_profile_id, idx, lang, teacher_name)
             self.repo.clear_state(line_user_id, "teacher_action")
             return reply
             
         elif user_text.startswith("Reject") or user_text.startswith("拒絕"):
             idx = parse_index(user_text)
             reason = re.sub(r"^(Reject|拒絕)\s*\d+\s*", "", user_text).strip()
-            reply = self.teacher_reject_by_index(t_id, idx, reason)
+            reply = self.teacher_reject_by_index(teacher_profile_id, idx, reason, lang, teacher_name)
             self.repo.clear_state(line_user_id, "teacher_action")
             return reply
             
         self.repo.clear_state(line_user_id, "teacher_action")
         return get_msg("common.action_cancelled", lang=lang)
 
-    def student_wizard_input(self, line_user_id: str, text: str) -> str:
-        # ... (保留原有的建立提案流程邏輯，無更動) ...
-        profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        if not profile: return "Profile Error"
-        lang = profile.get("language", "zh")
-
+    def student_wizard_input(self, line_user_id: str, student_profile_id: str, text: str, lang: str) -> str:
         state = self.repo.get_state(line_user_id, "proposal_create")
         if not state:
             return get_msg("common.unsupported_cmd", lang=lang)
@@ -200,6 +171,7 @@ class ProposalService:
         if step == "mode":
             idx = parse_index(text)
             modes = {1: "conversation", 2: "grammar", 3: "kids"}
+            
             if idx in modes:
                 payload["class_mode"] = modes[idx]
                 self.repo.upsert_state(line_user_id, "proposal_create", "time", payload)
@@ -228,7 +200,7 @@ class ProposalService:
                     end_iso = start_txt 
 
                 proposal_data = {
-                    "proposed_by": profile["id"],
+                    "proposed_by": student_profile_id,
                     "proposed_by_role": "student",
                     "class_mode": payload.get("class_mode"),
                     "start_time": start_iso,
@@ -236,6 +208,7 @@ class ProposalService:
                     "status": "pending",
                     "created_at": now_utc_iso()
                 }
+                
                 self.repo.create_time_proposal(proposal_data)
                 self.repo.clear_state(line_user_id, "proposal_create")
                 return get_msg("proposal.created_success", lang=lang)
@@ -249,9 +222,7 @@ class ProposalService:
         self.repo.clear_state(line_user_id, "proposal_create")
         return get_msg("common.unsupported_cmd", lang=lang)
     
-    def cancel_any_flow(self, line_user_id: str) -> str:
-        profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        lang = profile.get("language", "zh") if profile else "zh"
+    def cancel_any_flow(self, line_user_id: str, lang: str) -> str:
         self.repo.clear_state(line_user_id, "proposal_create")
         self.repo.clear_state(line_user_id, "student_action")
         self.repo.clear_state(line_user_id, "teacher_action")

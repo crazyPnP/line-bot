@@ -7,27 +7,25 @@ class BookingService:
     def __init__(self):
         self.repo = SupabaseRepo()
 
-    # === [新增] 專屬處理 Confirmed 狀態的邏輯 ===
-    def handle_student_confirmed_action(self, line_user_id: str, user_text: str, lang: str) -> str:
-        """專處理學生查看已確認訂單時的對話"""
+    # === [新增] 專屬處理 Confirmed 狀態的入口 ===
+    def handle_student_confirmed_action(self, line_user_id: str, student_profile_id: str, user_text: str, lang: str) -> str:
         if user_text.startswith("Cancel") or user_text.startswith("取消"):
             idx = parse_index(user_text)
             if idx is None: return get_msg("common.invalid_input", lang=lang)
             
-            reply = self.student_cancel_confirmed_by_index(line_user_id, idx)
+            reply = self.student_cancel_confirmed_by_index(student_profile_id, idx, lang)
             self.repo.clear_state(line_user_id, "student_action")
             return reply
             
         self.repo.clear_state(line_user_id, "student_action")
         return get_msg("common.action_cancelled", lang=lang)
 
-    def handle_teacher_confirmed_action(self, line_user_id: str, t_id: str, user_text: str, lang: str) -> str:
-        """專處理老師查看已確認訂單時的對話"""
+    def handle_teacher_confirmed_action(self, line_user_id: str, teacher_profile_id: str, user_text: str, lang: str) -> str:
         if user_text.startswith("Cancel") or user_text.startswith("取消"):
             idx = parse_index(user_text)
             if idx is None: return get_msg("common.invalid_input", lang=lang)
             
-            reply = self.teacher_cancel_confirmed_by_index(t_id, idx, line_user_id)
+            reply = self.teacher_cancel_confirmed_by_index(teacher_profile_id, idx, lang)
             self.repo.clear_state(line_user_id, "teacher_action")
             return reply
             
@@ -39,18 +37,15 @@ class BookingService:
         now_dt = datetime.fromisoformat(now_utc_iso())
         return start_dt - now_dt >= timedelta(minutes=30)
 
-    def list_confirmed(self, line_user_id: str, role: str) -> str:
-        profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        if not profile: return get_msg("common.not_found_profile", lang="zh")
-        lang = profile.get("language", "zh")
-        all_rows = self.repo.list_confirmed_bookings_for_profile(profile["id"])
+    def list_confirmed(self, target_profile_id: str, role: str, lang: str) -> str:
+        all_rows = self.repo.list_confirmed_bookings_for_profile(target_profile_id)
         
         if role == "teacher":
-            rows = [r for r in all_rows if r.get("teacher_id") == profile["id"]]
+            rows = [r for r in all_rows if r.get("teacher_id") == target_profile_id]
             other_label = "學生" if lang == "zh" else "Student"
             other_key = "student_id"
         else:
-            rows = [r for r in all_rows if r.get("student_id") == profile["id"]]
+            rows = [r for r in all_rows if r.get("student_id") == target_profile_id]
             other_label = "老師" if lang == "zh" else "Teacher"
             other_key = "teacher_id"
 
@@ -76,22 +71,18 @@ class BookingService:
         lines.append(get_msg("booking.cancel_instr", lang=lang))
         return "\n".join(lines)
 
-    def student_cancel_confirmed_by_index(self, line_user_id: str, idx: int) -> str:
-        profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        if not profile: return get_msg("common.not_found_profile", lang="zh")
-        lang = profile.get("language", "zh")
-        
-        rows = self.repo.list_confirmed_bookings_for_profile(profile["id"])
-        rows = [r for r in rows if r.get("student_id") == profile["id"]]
+    def student_cancel_confirmed_by_index(self, student_profile_id: str, idx: int, lang: str) -> str:
+        rows = self.repo.list_confirmed_bookings_for_profile(student_profile_id)
+        rows = [r for r in rows if r.get("student_id") == student_profile_id]
 
         if not rows or idx < 1 or idx > len(rows):
             return get_msg("proposal.not_found", lang=lang, count=len(rows or []))
 
         b = rows[idx - 1]
         if not self._can_cancel(b["start_time"]):
-            return "很抱歉，距離上課時間已不足 30 分鐘，無法取消課程。"
+            return "很抱歉，距離上課時間已不足 30 分鐘，無法取消課程。" if lang == "zh" else "Sorry, you cannot cancel a class within 30 minutes of the start time."
 
-        self.repo.cancel_booking(booking_id=b["id"], cancel_by=profile["id"], reason="student_cancel")
+        self.repo.cancel_booking(booking_id=b["id"], cancel_by=student_profile_id, reason="student_cancel")
         
         mode_key = b.get("class_mode", "conversation")
         mode_map = {
@@ -107,16 +98,17 @@ class BookingService:
         else:
             return f"✅ Booking #{idx} canceled successfully.\n\nMode: {mode_str}\nTime: {time_str}"
 
-    def teacher_cancel_confirmed_by_index(self, teacher_id: str, idx: int, line_user_id: str) -> str:
-        operator_profile = self.repo.get_profile_by_line_user_id(line_user_id)
-        lang = operator_profile.get("language", "zh") if operator_profile else "zh"
-
-        rows = self.repo.list_confirmed_bookings_for_profile(teacher_id)
-        rows = [r for r in rows if r.get("teacher_id") == teacher_id]
+    def teacher_cancel_confirmed_by_index(self, teacher_profile_id: str, idx: int, lang: str) -> str:
+        rows = self.repo.list_confirmed_bookings_for_profile(teacher_profile_id)
+        rows = [r for r in rows if r.get("teacher_id") == teacher_profile_id]
 
         if not rows or idx < 1 or idx > len(rows):
             return get_msg("proposal.not_found", lang=lang, count=len(rows or []))
 
         b = rows[idx - 1]
-        self.repo.cancel_booking(booking_id=b["id"], cancel_by="teacher", reason="teacher_cancel")
+        
+        if not self._can_cancel(b["start_time"]):
+             return "很抱歉，距離上課時間已不足 30 分鐘，無法取消課程。" if lang == "zh" else "Sorry, you cannot cancel a class within 30 minutes of the start time."
+             
+        self.repo.cancel_booking(booking_id=b["id"], cancel_by=teacher_profile_id, reason="teacher_cancel")
         return get_msg("booking.cancel_success", lang=lang)
