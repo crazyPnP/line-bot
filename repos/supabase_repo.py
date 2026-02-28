@@ -1,3 +1,5 @@
+import traceback
+
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 from utils.time_utils import now_utc_iso
@@ -204,7 +206,14 @@ class SupabaseRepo:
             "cancel_reason": reason,
             "updated_at": now_utc_iso(),
         }
-        self.sb.from_("bookings").update(patch).eq("id", booking_id).execute()
+        print(f"[DEBUG] 準備發送給 Supabase 的更新資料: {patch}")
+        try:
+            self.sb.from_("bookings").update(patch).eq("id", booking_id).execute()
+            print("[DEBUG] Supabase 更新成功！")
+        except Exception as e:
+            print(f"[ERROR] Supabase 更新失敗！原因: {e}")
+            print(traceback.format_exc())
+            raise e
 
     def create_booking_from_proposal(self, proposal_id: str, teacher_profile_id: str):
         """

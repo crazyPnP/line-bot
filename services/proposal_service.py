@@ -49,10 +49,11 @@ class ProposalService:
         lines = [get_msg("proposal.pending_list_title", lang=lang)]
         for i, r in enumerate(rows, 1):
             t_name = name_map.get(r["to_teacher_id"], "Unknown")
+            t_mode = r.get("class_mode", "General")
             start = fmt_taipei(r["start_time"])
-            lines.append(f"{i}) {t_name} | {start}")
+            lines.append(f"{i}) {t_name} | {t_mode} | {start}")
 
-        lines.append("\n" + get_msg("proposal.cancel_instr", lang=lang))
+        lines.append("\n" + get_msg("proposal.cancel_pending_idx", lang=lang))
         return "\n".join(lines)
 
     def student_cancel_pending_by_index(self, line_user_id: str, idx: int) -> str:
@@ -182,37 +183,39 @@ class ProposalService:
     # ========= Wizards (僅負責轉發與狀態檢查，實際語言由 action 方法內決定) =========
 
     def student_action_wizard(self, line_user_id: str, user_text: str) -> str:
-        # 這裡需要 lang 回傳 "Unsupported"，所以還是得查一次
-        # 但如果是有效指令，這會是唯一一次查詢 (因為後續方法會重用? 不，後續方法是獨立的)
-        # 為了極致優化，可以將 profile 傳入 action 方法，但這會破壞介面封裝。
-        # 目前維持這樣即可，因為 Wizard 主要是路由。
+        print(f"--- [DEBUG] 進入 student_action_wizard ---")
+        print(f"[DEBUG] User: {line_user_id}, Text: {user_text}")
         
         profile = self.repo.get_profile_by_line_user_id(line_user_id)
         if not profile: return "Profile Error"
         lang = profile.get("language", "zh")
 
         state = self.repo.get_state(line_user_id, "student_action")
+        print(f"[DEBUG] 目前取得的 state: {state}")
         if not state: return get_msg("common.unsupported_cmd", lang=lang)
 
         step = state["step"]
+        print(f"[DEBUG] 目前的 step: {step}")
         if user_text.startswith("Cancel") or user_text.startswith("取消"):
             idx = parse_index(user_text)
+            print(f"[DEBUG] 判斷為取消指令，解析出的 idx: {idx}")
             if idx is None: return get_msg("common.invalid_input", lang=lang)
             
             if step == "viewing_pending":
-                # 這裡會再次查詢 profile，但為了保持 student_cancel_pending_by_index 的獨立性，這是可接受的。
-                # 若要極致優化，可重構為傳遞 profile 物件。
+                print("[DEBUG] 進入 viewing_pending 的取消流程")
                 reply = self.student_cancel_pending_by_index(line_user_id, idx)
             elif step == "viewing_confirmed":
+                print("[DEBUG] 進入 viewing_confirmed 的取消流程")
                 from services.booking_service import BookingService
                 reply = BookingService().student_cancel_confirmed_by_index(line_user_id, idx)
             else:
+                print(f"[DEBUG] 未知的 step ({step}) 在取消流程中，準備清空狀態")
                 return get_msg("common.unsupported_cmd", lang=lang)
             
             self.repo.clear_state(line_user_id, "student_action")
             return reply
-
-        return get_msg("common.unsupported_cmd", lang=lang)
+        self.repo.clear_state(line_user_id, "student_action")
+        return get_msg("common.action_cancelled", lang=lang)
 
     def teacher_action_wizard(self, line_user_id: str, user_text: str) -> str:
         # 同樣獲取 operator 的語言 (可能是 admin 扮演)
@@ -342,7 +345,8 @@ class ProposalService:
             
             else:
                 return get_msg("common.invalid_input", lang=lang)
-
+            
+        self.repo.clear_state(line_user_id, "proposal_create")
         return get_msg("common.unsupported_cmd", lang=lang)
     
     def cancel_any_flow(self, line_user_id: str) -> str:

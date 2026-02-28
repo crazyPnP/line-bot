@@ -149,6 +149,8 @@ def handle_message(event):
             reply = proposal_service.student_start_proposal(line_user_id)
         
         elif text == "查看預約課程":
+            repo.clear_state(line_user_id, "proposal_create")
+            
             reply = proposal_service.student_list_pending(line_user_id)
             # 進入流程：允許取消「提案」
             repo.upsert_state(line_user_id, "student_action", "viewing_pending", {})
@@ -156,6 +158,8 @@ def handle_message(event):
             return
             
         elif text == "我的課表":
+            repo.clear_state(line_user_id, "proposal_create")
+            
             # 呼叫共用函式
             reply = booking_service.list_confirmed(line_user_id, "student")
             # 進入流程：允許取消「課程」
