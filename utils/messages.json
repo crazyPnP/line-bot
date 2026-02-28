@@ -57,10 +57,14 @@
       "accept_success": "✅ 已接受提案 #{idx}，並建立課程（confirmed）。",
       "reject_success": "✅ 已拒絕提案 #{idx}。",
       "notify_accepted": "✅ 你的提案已被 {teacher} 接受！\n時間：{time}",
-      "notify_rejected": "❌ 你的提案被 {teacher} 拒絕。\n原因：{reason}"
+      "notify_rejected": "❌ 你的提案被 {teacher} 拒絕。\n原因：{reason}",
+      "action_instr": "請輸入「接受提案 1」或「拒絕提案 1」"
+    },
+    "student": {
+      "notify_accepted": "🎉 您的預約已被接受！\n\n老師：{teacher}\n時間：{time}\n\n請準時上課喔！"
     },
     "admin": {
-        "switch_student": "已切換為「學生」視角",
+      "switch_student": "已切換為「學生」視角",
       "switch_teacher": "已切換為「老師」視角",
       "no_teachers": "目前沒有老師資料",
       "select_teacher_idx": "請選擇要扮演的老師序號：",
@@ -140,7 +144,11 @@
       "accept_success": "✅ Proposal #{idx} accepted, booking confirmed.",
       "reject_success": "✅ Proposal #{idx} rejected.",
       "notify_accepted": "✅ Your proposal has been accepted by {teacher}!\nTime: {time}",
-      "notify_rejected": "❌ Your proposal was rejected by {teacher}.\nReason: {reason}"
+      "notify_rejected": "❌ Your proposal was rejected by {teacher}.\nReason: {reason}",
+      "action_instr": "Please enter 'Accept Proposal 1' or 'Reject Proposal 1'"
+    },
+    "student": {
+      "notify_accepted": "🎉 Your booking has been accepted!\n\nTeacher: {teacher}\nTime: {time}\n\nPlease be on time!"
     },
     "admin": {
        "switch_student": "Switched to 'Student' view",

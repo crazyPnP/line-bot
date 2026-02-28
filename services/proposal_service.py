@@ -13,17 +13,40 @@ class ProposalService:
         self.push = LinePushService(Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN))
 
     def student_start_proposal(self, line_user_id: str, lang: str) -> str:
-        self.repo.upsert_state(line_user_id, "proposal_create", "mode", {})
-        return get_msg("proposal.ask_mode", lang=lang)
+        """
+        學生開始預約：第一步改為列出老師供選擇
+        """
+        teachers = self.repo.list_teachers()
+        if not teachers:
+            return get_msg("proposal.no_teachers", lang=lang)
+
+        # 準備老師選單
+        lines = ["請選擇老師（輸入數字）：" if lang == "zh" else "Step 1: Select a teacher (Enter number):"]
+        teacher_list = []
+        for i, t in enumerate(teachers, 1):
+            lines.append(f"{i}) {t['name']}")
+            # 儲存到 payload 以供下一步解析比對
+            teacher_list.append({"id": t["id"], "name": t["name"]})
+
+        # 初始化 Wizard 狀態，並進入 teacher 步驟
+        self.repo.upsert_state(line_user_id, "proposal_create", "teacher", {"teachers": teacher_list})
+        
+        return "\n".join(lines)
 
     def student_list_pending(self, student_profile_id: str, lang: str) -> str:
         rows = self.repo.list_student_pending_proposals(student_profile_id)
         if not rows:
             return get_msg("proposal.no_pending", lang=lang)
 
+        # 批次查詢老師名稱
+        teacher_ids = list({r.get("to_teacher_id") for r in rows if r.get("to_teacher_id")})
+        name_map = self.repo.get_profile_names_by_ids(teacher_ids) if teacher_ids else {}
+
         lines = [get_msg("proposal.pending_list_title", lang=lang)]
         for i, r in enumerate(rows, 1):
+            t_name = name_map.get(r.get("to_teacher_id"), "Unknown")
             start = fmt_taipei(r["start_time"])
+            
             mode_key = r.get("class_mode", "conversation")
             mode_map_dict = {
                 "conversation": get_msg("mode.conversation", lang=lang),
@@ -31,7 +54,9 @@ class ProposalService:
                 "kids": get_msg("mode.kids_english", lang=lang)
             }
             t_mode = mode_map_dict.get(mode_key, mode_key)
-            lines.append(f"{i}) {t_mode} | {start}")
+            
+            # 格式：1) 老師: 承承 | 對話 | 2026-11-12 09:00
+            lines.append(f"{i}) 老師: {t_name} | {t_mode} | {start}")
 
         lines.append("\n" + get_msg("proposal.cancel_instr", lang=lang))
         return "\n".join(lines)
@@ -44,6 +69,14 @@ class ProposalService:
         r = rows[idx - 1]
         
         if self.repo.cancel_student_pending_proposal(r["id"], student_profile_id):
+            # 為了取消成功的訊息，撈取老師名稱
+            t_id = r.get("to_teacher_id")
+            t_name = "Unknown"
+            if t_id:
+                t_prof = self.repo.get_profile_by_id(t_id)
+                if t_prof:
+                    t_name = t_prof.get("name", "Unknown")
+
             mode_key = r.get("class_mode", "conversation")
             mode_map_dict = {
                 "conversation": get_msg("mode.conversation", lang=lang),
@@ -54,9 +87,9 @@ class ProposalService:
             time_str = fmt_taipei(r['start_time'])
 
             if lang == "zh":
-                return f"✅ 已取消提案 #{idx}\n\n類型：{mode_str}\n時間：{time_str}"
+                return f"✅ 已取消提案 #{idx}\n\n老師：{t_name}\n類型：{mode_str}\n時間：{time_str}"
             else:
-                return f"✅ Proposal #{idx} canceled.\n\nMode: {mode_str}\nTime: {time_str}"
+                return f"✅ Proposal #{idx} canceled.\n\nTeacher: {t_name}\nMode: {mode_str}\nTime: {time_str}"
         
         return get_msg("proposal.cancel_pending_fail", lang=lang)
 
@@ -130,7 +163,6 @@ class ProposalService:
 
         return get_msg("teacher.reject_success", lang=lang, idx=idx)
 
-    # === [重構後] 乾淨的 Pending 處理入口 ===
     def handle_student_pending_action(self, line_user_id: str, student_profile_id: str, user_text: str, lang: str) -> str:
         if user_text.startswith("Cancel") or user_text.startswith("取消"):
             idx = parse_index(user_text)
@@ -168,7 +200,24 @@ class ProposalService:
         step = state["step"]
         payload = state.get("payload") or {}
 
-        if step == "mode":
+        # === Step 1: 選擇老師 (Teacher) ===
+        if step == "teacher":
+            idx = parse_index(text)
+            teachers = payload.get("teachers", [])
+            
+            if idx and 1 <= idx <= len(teachers):
+                selected_t = teachers[idx - 1]
+                payload["to_teacher_id"] = selected_t["id"]
+                payload["teacher_name"] = selected_t["name"]
+                
+                # 推進到選擇課程模式
+                self.repo.upsert_state(line_user_id, "proposal_create", "mode", payload)
+                return get_msg("proposal.ask_mode", lang=lang)
+            else:
+                return get_msg("common.invalid_input", lang=lang)
+
+        # === Step 2: 選擇課程模式 (Mode) ===
+        elif step == "mode":
             idx = parse_index(text)
             modes = {1: "conversation", 2: "grammar", 3: "kids"}
             
@@ -179,13 +228,38 @@ class ProposalService:
             else:
                 return get_msg("common.invalid_input", lang=lang)
 
+        # === Step 3: 輸入時間 (Time) ===
         elif step == "time":
             payload["time_text"] = text
             self.repo.upsert_state(line_user_id, "proposal_create", "confirm", payload)
+            
             mode_map = {"conversation": "對話 (Conversation)", "grammar": "文法 (Grammar)", "kids": "兒童 (Kids)"}
             mode_label = mode_map.get(payload["class_mode"], payload["class_mode"])
-            return get_msg("proposal.confirm_details", lang=lang, mode=mode_label, time=text)
+            
+            # 取得老師名字
+            t_name = payload.get("teacher_name", "Unknown")
+            
+            # 依據要求格式化確認訊息
+            if lang == "zh":
+                return (
+                    "請確認您的預約資訊：\n"
+                    f"老師 : {t_name}\n"
+                    f"類別：{mode_label}\n"
+                    f"時間：{text}\n\n"
+                    "1) 確認 (Yes)\n"
+                    "2) 取消 (No)"
+                )
+            else:
+                return (
+                    "Please confirm your booking details:\n"
+                    f"Teacher : {t_name}\n"
+                    f"Mode: {mode_label}\n"
+                    f"Time: {text}\n\n"
+                    "1) Confirm (Yes)\n"
+                    "2) Cancel (No)"
+                )
 
+        # === Step 4: 最終確認 (Confirm) ===
         elif step == "confirm":
             if text.lower() in ["yes", "y", "ok", "1", "確認", "是"]:
                 start_txt = payload.get("time_text")
@@ -202,6 +276,7 @@ class ProposalService:
                 proposal_data = {
                     "proposed_by": student_profile_id,
                     "proposed_by_role": "student",
+                    "to_teacher_id": payload.get("to_teacher_id"), # [關鍵新增] 將老師 ID 寫入資料庫
                     "class_mode": payload.get("class_mode"),
                     "start_time": start_iso,
                     "end_time": end_iso,
