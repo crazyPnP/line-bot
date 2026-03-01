@@ -17,6 +17,7 @@ deprecation==2.1.0
 Flask==3.1.2
 frozenlist==1.8.0
 future==1.0.0
+gunicorn==25.1.0
 h11==0.16.0
 h2==4.3.0
 hpack==4.1.0
