@@ -84,6 +84,11 @@
       "complete_student": "註冊成功！您現在是「學生」身分。",
       "complete_teacher_pending": "申請已送出！您的「老師」身分正在審核中，請等待管理員開通權限。",
       "pending_alert": "⚠️ 您的帳號目前處於「待審核」狀態，暫時無法使用老師功能。請聯繫管理員。"
+    },
+    "help": {
+      "student": "🎓 【學生操作說明】\n1️⃣ 預約課程：點擊後選擇老師、時間，並填寫備註進行預約。\n2️⃣ 查看預約課程：查詢送出後等待老師確認的預約清單。\n3️⃣ 我的課表：查看雙方已確認的正式上課時間。\n4️⃣ 取消課程：在列表中輸入對應指令（例如「取消 1」）即可取消。\n5️⃣ 切換語言：點擊可切換中/英介面。\n6️⃣ 取消流程：操作不小心卡住或選錯時，點擊即可重置目前狀態。",
+      "teacher": "👨‍🏫 【老師操作說明】\n1️⃣ 待確認課程：查看學生的預約申請。請輸入「接受 1」或「拒絕 1」來回覆。\n2️⃣ 我的課表：查看已排定的正式上課清單。\n3️⃣ 結算薪資：點擊即可自動計算目前所有「未付款」課程的總金額與堂數。\n4️⃣ 取消課程：在課表中輸入對應指令（例如「取消 1」）即可取消。\n5️⃣ 切換語言：點擊可切換中/英介面。\n6️⃣ 取消流程：操作不小心卡住或選錯時，點擊即可重置目前狀態。",
+      "admin": "⚙️ 【管理員操作說明】\n1️⃣ 待審核名單：請手動輸入「待審核名單」，並輸入「開通 1」審核新老師。\n2️⃣ 切換老師/學生：以對應身分視角進行功能操作與測試。\n3️⃣ 選老師：指定系統目前要結算或扮演的特定老師。\n4️⃣ 結算薪資：請先點「選老師」，選定後再點擊「結算薪資」，即可算出該老師未付款總額。\n5️⃣ 切換語言：點擊可切換中/英介面。\n6️⃣ 取消流程：重置目前對話狀態。"
     }
   },
   "en": {
@@ -171,6 +176,11 @@
       "complete_student": "Registration successful! You are now a 'Student'.",
       "complete_teacher_pending": "Application submitted! Your 'Teacher' account is pending approval. Please wait for the admin.",
       "pending_alert": "⚠️ Your account is currently 'Pending Approval'. You cannot access teacher features yet."
+    },
+    "help": {
+      "student": "🎓 [Student Guide]\n1️⃣ Book Class: Select teacher, time, and leave a note to book.\n2️⃣ View Pending: View booking requests waiting for teacher's approval.\n3️⃣ My Schedule: View confirmed upcoming classes.\n4️⃣ Cancel Class: Type 'Cancel 1' in the list to cancel a class.\n5️⃣ Switch Language: EN/ZH UI toggle.\n6️⃣ Cancel Flow: Reset the current flow if stuck or selected wrong option.",
+      "teacher": "👨‍🏫 [Teacher Guide]\n1️⃣ Pending Classes: View student requests. Type 'Accept 1' or 'Reject 1' to respond.\n2️⃣ My Schedule: View confirmed upcoming classes.\n3️⃣ Calculate Salary: Auto-calculate total amount and count of 'unpaid' classes.\n4️⃣ Cancel Class: Type 'Cancel 1' in the list to cancel a class.\n5️⃣ Switch Language: EN/ZH UI toggle.\n6️⃣ Cancel Flow: Reset the current flow if stuck or selected wrong option.",
+      "admin": "⚙️ [Admin Guide]\n1️⃣ Pending Teachers: Manually type 'Pending List' then 'Approve 1' to grant access.\n2️⃣ Switch Role: Test bot features from a Student or Teacher perspective.\n3️⃣ Pick Teacher: Select a specific teacher to impersonate or calculate salary.\n4️⃣ Calculate Salary: Click 'Pick Teacher' first, then click 'Salary' to calculate.\n5️⃣ Switch Language: EN/ZH UI toggle.\n6️⃣ Cancel Flow: Reset current conversation state."
     }
   }
 }

@@ -99,6 +99,14 @@ def handle_message(event):
             _reply_text(event.reply_token, reply)
             return
 
+        # [新增] 雙語操作說明指令
+        if text in ("操作說明", "說明", "Help", "help"):
+            # 如果是管理員且沒有在扮演別人，顯示管理員說明；否則顯示當下扮演角色的說明
+            help_role = "admin" if role == "admin" and not admin_as_teacher_id else effective_role
+            reply = get_msg(f"help.{help_role}", lang=lang)
+            _reply_text(event.reply_token, reply)
+            return
+
         # --- 管理員專屬指令 ---
         if role == "admin":
             if text == "待審核名單":
@@ -139,12 +147,10 @@ def handle_message(event):
                     _reply_text(event.reply_token, "❌ 請先輸入「待審核名單」來獲取最新列表。")
                     return
 
-            # [新增] 薪資計算指令
             elif text in ("價格", "計算價格", "結算薪資"):
                 if not admin_as_teacher_id:
-                    _reply_text(event.reply_token, "⚠️ 請先使用「選老師」或「切換老師」指令，指定要查詢哪位老師。")
+                    _reply_text(event.reply_token, "⚠️ 請先使用「選老師」指定要查詢哪位老師。")
                     return
-                
                 reply = booking_service.calculate_and_display_salary(
                     admin_as_teacher_id, 
                     admin_as_teacher_name, 
@@ -240,6 +246,12 @@ def handle_message(event):
                 repo.upsert_state(line_user_id, "teacher_action", "viewing_confirmed", {
                     "teacher_profile_id": t_prof_id
                 })
+                _reply_text(event.reply_token, reply)
+                return
+
+            # [新增] 讓老師自己也能看自己的薪資
+            elif text in ("結算薪資", "Salary"):
+                reply = booking_service.calculate_and_display_salary(t_prof_id, t_prof_name, lang)
                 _reply_text(event.reply_token, reply)
                 return
 
