@@ -12,6 +12,7 @@ from repos.supabase_repo import SupabaseRepo
 from utils.i18n import get_msg, parse_index
 from services.user_service import UserService
 from services.rich_menu_service import RichMenuService
+from services.line_notify import LinePushService  
 import traceback 
 
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -23,6 +24,7 @@ api_client = ApiClient(configuration)
 messaging_api = MessagingApi(api_client)
 user_service = UserService()
 rich_menu_service = RichMenuService()
+push_service = LinePushService(configuration) 
 
 def get_admin_view(line_user_id: str) -> dict:
     st = repo.get_state(line_user_id, "mode")
@@ -99,7 +101,59 @@ def handle_message(event):
 
         # --- 管理員專屬指令 ---
         if role == "admin":
-            if text == "切換學生":
+            if text == "待審核名單":
+                pending_list = repo.list_pending_teachers()
+                if not pending_list:
+                    _reply_text(event.reply_token, "✅ 目前沒有待審核的老師。")
+                    return
+                
+                lines = ["📋 待審核老師名單："]
+                for i, t in enumerate(pending_list, 1):
+                    lines.append(f"{i}) {t['name']}")
+                lines.append("\n💡 請輸入「開通 {數字}」來通過審核，例如「開通 1」。")
+                
+                repo.upsert_state(line_user_id, "mode", "approve_teacher", {"list": pending_list})
+                _reply_text(event.reply_token, "\n".join(lines))
+                return
+
+            elif text.startswith("開通 "):
+                idx = parse_index(text)
+                state_mode = repo.get_state(line_user_id, "mode")
+                if state_mode and state_mode.get("step") == "approve_teacher":
+                    pending_list = state_mode.get("payload", {}).get("list", [])
+                    if idx and 1 <= idx <= len(pending_list):
+                        target = pending_list[idx - 1]
+                        repo.update_profile_role(target["id"], "teacher")
+                        rich_menu_service.link_user_menu(target["line_user_id"], "teacher")
+                        push_service.push_text(
+                            target["line_user_id"], 
+                            "🎉 恭喜！您的老師帳號已通過管理員審核！\n\n現在您的選單已切換為老師專屬功能，可以開始接收學生的預約囉。"
+                        )
+                        _reply_text(event.reply_token, f"✅ 已成功開通老師：{target['name']}")
+                        repo.clear_state(line_user_id, "mode")
+                        return
+                    else:
+                        _reply_text(event.reply_token, "❌ 找不到對應的序號，請重新輸入。")
+                        return
+                else:
+                    _reply_text(event.reply_token, "❌ 請先輸入「待審核名單」來獲取最新列表。")
+                    return
+
+            # [新增] 薪資計算指令
+            elif text in ("價格", "計算價格", "結算薪資"):
+                if not admin_as_teacher_id:
+                    _reply_text(event.reply_token, "⚠️ 請先使用「選老師」或「切換老師」指令，指定要查詢哪位老師。")
+                    return
+                
+                reply = booking_service.calculate_and_display_salary(
+                    admin_as_teacher_id, 
+                    admin_as_teacher_name, 
+                    lang
+                )
+                _reply_text(event.reply_token, reply)
+                return
+
+            elif text == "切換學生":
                 repo.upsert_state(line_user_id, "mode", "view", {"as_role": "student"})
                 _reply_text(event.reply_token, get_msg("admin.switch_student", lang=lang))
                 return
@@ -158,7 +212,6 @@ def handle_message(event):
                     reply = proposal_service.student_wizard_input(line_user_id, profile["id"], text, lang)
                 elif state_data := repo.get_state(line_user_id, "student_action"):
                     step = state_data.get("step")
-                    # 🚥 交通警察：根據 step 分流給不同的 Service 🚥
                     if step == "viewing_pending":
                         reply = proposal_service.handle_student_pending_action(line_user_id, profile["id"], text, lang)
                     elif step == "viewing_confirmed":
@@ -197,7 +250,6 @@ def handle_message(event):
                     t_id = payload.get("teacher_profile_id") or t_prof_id
                     t_name = payload.get("teacher_name") or t_prof_name
 
-                    # 🚥 交通警察：根據 step 分流給不同的 Service 🚥
                     if step == "viewing_pending":
                         reply = proposal_service.handle_teacher_pending_action(line_user_id, t_id, text, lang, t_name)
                     elif step == "viewing_confirmed":

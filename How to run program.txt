@@ -34,3 +34,13 @@ line_bot/
 
 SUPABASE_SERVICE_ROLE_KEY
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFieHRycWlkYnBya2xxeXFhdm1xIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDg0MjAwOSwiZXhwIjoyMDgwNDE4MDA5fQ.4o-SlAGK0fYvZE1hE4wOdkGloyB-AXKBE9ewv4n6GDM
+
+總此吋為1800*1200*24b
+97英吋*1.26英吋 每一區塊
+位置分別為
+1.0英吋 * 0英吋
+2.3.03*0
+3.0*1.37
+4.3.03*1.37
+5.0*2.74
+6.3.03*2.74

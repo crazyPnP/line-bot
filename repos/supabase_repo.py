@@ -12,26 +12,23 @@ class SupabaseRepo:
     # 1. Profile 相關 (使用者資料)
     # ==============================
     def create_profile(self, profile_data: dict):
-        """建立新使用者資料"""
         self.sb.from_("profile").insert(profile_data).execute()
     
-    def update_profile_role(self, profile_id: str, new_role: str):
-        """管理員更新使用者角色 (例如將 teacher_pending 改為 teacher)"""
-        return self.sb.from_("profile") \
-            .update({"role": new_role}) \
-            .eq("id", profile_id) \
-            .execute()
+    def update_profile_role(self, profile_id: str, new_role: str) -> bool:
+        try:
+            self.sb.from_("profile").update({"role": new_role}).eq("id", profile_id).execute()
+            return True
+        except Exception as e:
+            print(f"[ERROR] update_profile_role failed: {e}")
+            return False
 
-    def list_pending_teachers(self):
-        """列出所有待審核的老師 (role = 'teacher_pending')"""
-        res = (
-            self.sb.from_("profile")
-            .select("*")
-            .eq("role", "teacher_pending")
-            .order("created_at", desc=True) # 假設 profile 有 created_at，若無可拿掉 order
-            .execute()
-        )
-        return res.data or []
+    def list_pending_teachers(self) -> list:
+        try:
+            res = self.sb.from_("profile").select("*").eq("role", "teacher_pending").execute()
+            return res.data
+        except Exception as e:
+            print(f"[ERROR] list_pending_teachers failed: {e}")
+            return []
         
     def get_profile_by_line_user_id(self, line_user_id: str):
         res = (
@@ -60,7 +57,6 @@ class SupabaseRepo:
         return p.get("line_user_id") if p else None
     
     def get_profile_names_by_ids(self, profile_ids: list[str]) -> dict[str, str]:
-        """批次查詢使用者名稱，避免 N+1 問題"""
         ids = [i for i in profile_ids if i]
         if not ids:
             return {}
@@ -95,7 +91,6 @@ class SupabaseRepo:
             .execute()
 
     def list_teachers(self):
-        """列出所有老師詳細資訊"""
         res = (
             self.sb.from_("profile")
             .select("id,line_user_id,role,name")
@@ -106,7 +101,6 @@ class SupabaseRepo:
         return res.data or []
 
     def list_teachers_simple(self):
-        """列出所有老師簡要資訊 (Admin 選單用)"""
         res = (
             self.sb.from_("profile")
             .select("id,name,role")
@@ -216,13 +210,6 @@ class SupabaseRepo:
             raise e
 
     def create_booking_from_proposal(self, proposal_id: str, teacher_profile_id: str):
-        """
-        老師接受提案的核心邏輯：
-        1. 檢查並鎖定提案
-        2. 建立正式 Booking
-        3. 更新提案狀態
-        """
-        # 1. 取得提案資料
         res_p = self.sb.from_("time_proposals").select("*").eq("id", proposal_id).execute()
         if not res_p.data:
             return None
@@ -231,7 +218,6 @@ class SupabaseRepo:
         if p["status"] != "pending":
             return None
 
-        # 2. 準備 Booking 資料
         booking_data = {
             "proposal_id": p["id"],
             "teacher_id": teacher_profile_id,
@@ -239,21 +225,21 @@ class SupabaseRepo:
             "start_time": p["start_time"],
             "end_time": p["end_time"],
             "class_mode": p.get("class_mode", "general"),
+            "note": p.get("note", ""),
             "price": 0, 
             "currency": "TWD",
             "status": "confirmed",
+            "payment_status": "unpaid", # 預設未付款
             "created_at": now_utc_iso(),
             "updated_at": now_utc_iso()
         }
 
-        # 3. 寫入 Bookings 表
         res_b = self.sb.from_("bookings").insert(booking_data).execute()
         if not res_b.data:
             return None
             
         new_booking = res_b.data[0]
 
-        # 4. 更新 Time Proposal 狀態為 accepted
         self.sb.from_("time_proposals").update({
             "status": "accepted",
             "updated_at": now_utc_iso()
@@ -275,8 +261,30 @@ class SupabaseRepo:
         )
         return bool(res.data)
 
+    def update_booking_price(self, booking_id: str, price: int, currency: str):
+        """結算時將計算出來的價格寫入 bookings 資料表"""
+        try:
+            self.sb.from_("bookings").update({
+                "price": price,
+                "currency": currency
+            }).eq("id", booking_id).execute()
+        except Exception as e:
+            print(f"[ERROR] update_booking_price failed: {e}")
+
     # ==============================
-    # 4. Conversation State (Wizard 狀態)
+    # 4. Price 相關 (計價表)
+    # ==============================
+    def get_all_prices(self):
+        """獲取所有計價規則"""
+        try:
+            res = self.sb.from_("price").select("*").execute()
+            return res.data or []
+        except Exception as e:
+            print(f"[ERROR] get_all_prices failed: {e}")
+            return []
+
+    # ==============================
+    # 5. Conversation State (Wizard 狀態)
     # ==============================
     def get_state(self, line_user_id: str, flow: str):
         res = (

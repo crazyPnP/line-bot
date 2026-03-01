@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from utils.time_utils import now_utc_iso, fmt_taipei
 from utils.i18n import get_msg, parse_index
 from repos.supabase_repo import SupabaseRepo
@@ -11,6 +11,17 @@ class ProposalService:
     def __init__(self):
         self.repo = SupabaseRepo()
         self.push = LinePushService(Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN))
+
+    def _get_weekday_from_iso(self, iso_str: str, lang: str) -> str:
+        """根據 ISO 字串轉換成台灣時間後取得星期幾"""
+        try:
+            if iso_str.endswith('Z'):
+                iso_str = iso_str[:-1] + '+00:00'
+            dt = datetime.fromisoformat(iso_str)
+            dt_tw = dt.astimezone(timezone(timedelta(hours=8)))
+            return self._get_weekday_str(dt_tw, lang)
+        except Exception:
+            return ""
 
     def student_start_proposal(self, line_user_id: str, lang: str) -> str:
         """
@@ -46,6 +57,7 @@ class ProposalService:
         for i, r in enumerate(rows, 1):
             t_name = name_map.get(r.get("to_teacher_id"), "Unknown")
             start = fmt_taipei(r["start_time"])
+            weekday_str = self._get_weekday_from_iso(r["start_time"], lang)
             
             mode_key = r.get("class_mode", "conversation")
             mode_map_dict = {
@@ -55,8 +67,11 @@ class ProposalService:
             }
             t_mode = mode_map_dict.get(mode_key, mode_key)
             
-            # 格式：1) 老師: 承承 | 對話 | 2026-11-12 09:00
-            lines.append(f"{i}) 老師: {t_name} | {t_mode} | {start}")
+            note = r.get("note", "")
+            note_str = f"\n   └ 備註: {note}" if note else ""
+            
+            # 加入星期幾顯示
+            lines.append(f"{i}) 老師: {t_name} | {t_mode} | {start} ({weekday_str}){note_str}")
 
         lines.append("\n" + get_msg("proposal.cancel_instr", lang=lang))
         return "\n".join(lines)
@@ -85,11 +100,12 @@ class ProposalService:
             }
             mode_str = mode_map_dict.get(mode_key, mode_key)
             time_str = fmt_taipei(r['start_time'])
+            weekday_str = self._get_weekday_from_iso(r['start_time'], lang)
 
             if lang == "zh":
-                return f"✅ 已取消提案 #{idx}\n\n老師：{t_name}\n類型：{mode_str}\n時間：{time_str}"
+                return f"✅ 已取消提案 #{idx}\n\n老師：{t_name}\n類型：{mode_str}\n時間：{time_str} ({weekday_str})"
             else:
-                return f"✅ Proposal #{idx} canceled.\n\nTeacher: {t_name}\nMode: {mode_str}\nTime: {time_str}"
+                return f"✅ Proposal #{idx} canceled.\n\nTeacher: {t_name}\nMode: {mode_str}\nTime: {time_str} ({weekday_str})"
         
         return get_msg("proposal.cancel_pending_fail", lang=lang)
 
@@ -105,6 +121,8 @@ class ProposalService:
         for i, r in enumerate(rows, 1):
             s_name = name_map.get(r["proposed_by"], "Unknown")
             start = fmt_taipei(r["start_time"])
+            weekday_str = self._get_weekday_from_iso(r["start_time"], lang)
+            
             mode_key = r.get("class_mode", "conversation")
             mode_map_dict = {
                 "conversation": get_msg("mode.conversation", lang=lang),
@@ -112,7 +130,13 @@ class ProposalService:
                 "kids": get_msg("mode.kids_english", lang=lang)
             }
             t_mode = mode_map_dict.get(mode_key, mode_key)
-            lines.append(f"{i}) 學生: {s_name} | {t_mode} | {start}")
+            
+            # 顯示學生填寫的備註
+            note = r.get("note", "")
+            note_str = f"\n   └ 備註: {note}" if note else ""
+            
+            # 加入星期幾顯示
+            lines.append(f"{i}) 學生: {s_name} | {t_mode} | {start} ({weekday_str}){note_str}")
 
         lines.append("\n" + get_msg("teacher.action_instr", lang=lang))
         return "\n".join(lines)
@@ -192,6 +216,14 @@ class ProposalService:
         self.repo.clear_state(line_user_id, "teacher_action")
         return get_msg("common.action_cancelled", lang=lang)
 
+    def _get_weekday_str(self, dt: datetime, lang: str) -> str:
+        """根據 datetime 取得星期幾的字串"""
+        weekdays_zh = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+        weekdays_en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        if lang == "zh":
+            return weekdays_zh[dt.weekday()]
+        return weekdays_en[dt.weekday()]
+
     def student_wizard_input(self, line_user_id: str, student_profile_id: str, text: str, lang: str) -> str:
         state = self.repo.get_state(line_user_id, "proposal_create")
         if not state:
@@ -230,22 +262,72 @@ class ProposalService:
 
         # === Step 3: 輸入時間 (Time) ===
         elif step == "time":
-            payload["time_text"] = text
+            try:
+                from dateutil import parser
+                
+                # 建立台灣時區 (UTC+8)
+                tw_tz = timezone(timedelta(hours=8))
+                
+                input_dt = parser.parse(text)
+                
+                # 如果使用者沒有輸入年份，預設為今年
+                if input_dt.year == 1900:
+                    input_dt = input_dt.replace(year=datetime.now().year)
+
+                # 確保 input_dt 是 timezone-aware
+                if input_dt.tzinfo is None:
+                    input_dt = input_dt.replace(tzinfo=tw_tz)
+
+                # 取得當前台灣時間
+                now_tw = datetime.now(tw_tz)
+
+                # 驗證時間：必須至少在當下時間過後的 1 小時
+                if input_dt <= now_tw + timedelta(hours=1):
+                    error_msg = "❌ 預約失敗：預約時間必須至少在現在時間的 1 小時之後。請重新輸入一個較晚的時間（例如：2023-11-01 15:00）：" if lang == "zh" else "❌ Booking failed: The booking time must be at least 1 hour from now. Please enter a later time:"
+                    return error_msg
+
+                # 驗證通過，儲存格式化後的時間字串和 ISO 格式 (轉換為 UTC)
+                payload["time_text"] = input_dt.strftime('%Y-%m-%d %H:%M')
+                payload["start_iso"] = input_dt.astimezone(timezone.utc).isoformat()
+                payload["weekday_str"] = self._get_weekday_str(input_dt, lang)
+
+                # 推進到詢問備註
+                self.repo.upsert_state(line_user_id, "proposal_create", "note", payload)
+                return get_msg("proposal.ask_note", lang=lang)
+
+            except ValueError:
+                # 解析失敗
+                error_msg = "❌ 日期格式錯誤，無法辨識。請使用如 '2023-10-30 15:00' 的格式重新輸入：" if lang == "zh" else "❌ Invalid date format. Please try again (e.g., '2023-10-30 15:00'):"
+                return error_msg
+            except Exception as e:
+                print(f"[ERROR] 時間解析發生未預期錯誤: {e}")
+                return "❌ 系統處理時間發生錯誤，請稍後再試或使用標準格式輸入。" if lang == "zh" else "❌ System error while parsing time. Please try again."
+
+        # === Step 4: 填寫備註 (Note) ===
+        elif step == "note":
+            # 處理使用者不想填寫的情況
+            note_text = "" if text.lower() in ["無", "none", "no", "跳過", "skip"] else text
+            payload["note"] = note_text
+
             self.repo.upsert_state(line_user_id, "proposal_create", "confirm", payload)
-            
+
             mode_map = {"conversation": "對話 (Conversation)", "grammar": "文法 (Grammar)", "kids": "兒童 (Kids)"}
             mode_label = mode_map.get(payload["class_mode"], payload["class_mode"])
             
             # 取得老師名字
             t_name = payload.get("teacher_name", "Unknown")
+            time_str = payload.get("time_text", "")
+            weekday_str = payload.get("weekday_str", "")
+            display_note = note_text if note_text else ("無" if lang == "zh" else "None")
             
-            # 依據要求格式化確認訊息
+            # 依據要求格式化確認訊息，加入星期幾
             if lang == "zh":
                 return (
                     "請確認您的預約資訊：\n"
                     f"老師 : {t_name}\n"
                     f"類別：{mode_label}\n"
-                    f"時間：{text}\n\n"
+                    f"時間：{time_str} ({weekday_str})\n"
+                    f"備註：{display_note}\n\n"
                     "1) 確認 (Yes)\n"
                     "2) 取消 (No)"
                 )
@@ -254,32 +336,38 @@ class ProposalService:
                     "Please confirm your booking details:\n"
                     f"Teacher : {t_name}\n"
                     f"Mode: {mode_label}\n"
-                    f"Time: {text}\n\n"
+                    f"Time: {time_str} ({weekday_str})\n"
+                    f"Note: {display_note}\n\n"
                     "1) Confirm (Yes)\n"
                     "2) Cancel (No)"
                 )
 
-        # === Step 4: 最終確認 (Confirm) ===
+        # === Step 5: 最終確認 (Confirm) ===
         elif step == "confirm":
             if text.lower() in ["yes", "y", "ok", "1", "確認", "是"]:
-                start_txt = payload.get("time_text")
+                start_iso = payload.get("start_iso")
+                
+                if not start_iso:
+                    # 如果因為某種原因 start_iso 不存在（例如舊的 payload 結構），回退錯誤
+                    self.repo.clear_state(line_user_id, "proposal_create")
+                    return "發生錯誤：找不到預約時間，請重新開始流程。" if lang == "zh" else "Error: Booking time not found. Please restart."
+                
                 try:
-                    from dateutil import parser
-                    dt = parser.parse(start_txt)
+                    dt = datetime.fromisoformat(start_iso)
                     end_dt = dt + timedelta(minutes=50)
-                    start_iso = dt.isoformat()
                     end_iso = end_dt.isoformat()
-                except:
-                    start_iso = start_txt
-                    end_iso = start_txt 
+                except ValueError:
+                    self.repo.clear_state(line_user_id, "proposal_create")
+                    return "發生錯誤：時間格式無效，請重新開始流程。" if lang == "zh" else "Error: Invalid time format. Please restart."
 
                 proposal_data = {
                     "proposed_by": student_profile_id,
                     "proposed_by_role": "student",
-                    "to_teacher_id": payload.get("to_teacher_id"), # [關鍵新增] 將老師 ID 寫入資料庫
+                    "to_teacher_id": payload.get("to_teacher_id"), 
                     "class_mode": payload.get("class_mode"),
                     "start_time": start_iso,
                     "end_time": end_iso,
+                    "note": payload.get("note", ""), # 將備註寫入資料庫
                     "status": "pending",
                     "created_at": now_utc_iso()
                 }
